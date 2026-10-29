@@ -25,7 +25,7 @@ import {
   type EncodedSymbol,
   type Segment,
 } from '@simurgh/core';
-import { renderRaster, renderSVG } from '@simurgh/core/render';
+import { renderRGBA, renderRaster, renderSVG, THEMES, THEME_IDS, themeContrast } from '@simurgh/core/render';
 import {
   blur,
   contrast,
@@ -104,6 +104,8 @@ function segmentSummary(segments: Segment[]): string {
           return `SIGNATURE(${s.value.length})`;
         case 'vendor':
           return `VENDOR(${s.id})`;
+        case 'secure':
+          return `SECURE(${s.ciphertext.length - 16})`;
         default:
           return `${s.kind.toUpperCase()}(${s.value.length})`;
       }
@@ -335,7 +337,12 @@ function runLab(): void {
       return;
     }
     const text = payloadToText(result.payload!);
-    out.innerHTML =
+    const sealed = result.encrypted
+      ? result.secureUnlocked
+        ? '<p class="good">پاکت SECURE با کلید داده‌شده باز شد.</p>'
+        : `<p class="warn">نماد قفل است — <span class="mono" dir="ltr">${escapeHtml(JSON.stringify(result.secureInfo))}</span>. برای بازکردن، گذرواژه را در بالا بدهید.</p>`
+      : '';
+    out.innerHTML = sealed +
       `<p class="good">✓ رمزگشایی شد در ${fa(ms.toFixed(0))} میلی‌ثانیه</p>` +
       `<p class="decoded mono" dir="auto">${escapeHtml(text)}</p>` +
       diagTable(result, ms, img);
@@ -399,7 +406,12 @@ async function decodeFile(file: File): Promise<void> {
       return;
     }
     const text = payloadToText(result.payload!);
-    out.innerHTML = byId<HTMLInputElement>('file-json').checked
+    const sealed = result.encrypted
+      ? result.secureUnlocked
+        ? '<p class="good">پاکت SECURE با کلید داده‌شده باز شد.</p>'
+        : `<p class="warn">نماد قفل است — <span class="mono" dir="ltr">${escapeHtml(JSON.stringify(result.secureInfo))}</span>. برای بازکردن، گذرواژه را در بالا بدهید.</p>`
+      : '';
+    out.innerHTML = sealed + byId<HTMLInputElement>('file-json').checked
       ? `<pre class="mono scroll" dir="ltr">${escapeHtml(
           JSON.stringify(
             {
@@ -532,6 +544,25 @@ function wire(): void {
     byId<HTMLTextAreaElement>('payload').value = `hex:${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
     rebuild();
   });
+
+  {
+    const sel = byId<HTMLSelectElement>('theme');
+    for (const id of THEME_IDS) {
+      const t = THEMES[id]!;
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = `${t.fa} (${themeContrast(t).worst.toFixed(1)}:1)`;
+      sel.appendChild(opt);
+    }
+    sel.value = 'ink';
+    sel.addEventListener('change', () => {
+      paintSymbol();
+    });
+  }
+  for (const id of ['seal', 'seal-pass', 'seal-iter', 'seal-context']) {
+    byId(id).addEventListener('change', rebuild);
+    byId(id).addEventListener('input', rebuild);
+  }
 
   byId('render').addEventListener('click', rebuild);
 

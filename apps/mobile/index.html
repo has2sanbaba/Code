@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
+    <meta name="theme-color" content="#0e1a2f" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="سیمرغ‌کد: ساخت و اسکن نمادهای دوبعدی سیمرغ — با لایهٔ رمزنگاری که بدون کلید، حتی نماد آسیب‌دیده هم بازسازی‌پذیر نیست."
+    />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <link rel="stylesheet" href="./src/style.css" />
+    <title>سیمرغ‌کد — ساخت و اسکن</title>
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" id="brandMark" aria-hidden="true"></span>
+        <span class="brand-text">
+          <strong>سیمرغ‌کد</strong>
+          <small>SiMurgh Code · <span id="specVersion">۱٫۱</span></small>
+        </span>
+      </div>
+      <button class="ghost" id="installBtn" hidden>نصب برنامه</button>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="بخش‌ها">
+      <button role="tab" id="tab-create" aria-controls="panel-create" aria-selected="true" class="tab is-active">
+        <span class="tab-ico">✳</span> ساخت
+      </button>
+      <button role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" class="tab">
+        <span class="tab-ico">◎</span> اسکن
+      </button>
+      <button role="tab" id="tab-about" aria-controls="panel-about" aria-selected="false" class="tab">
+        <span class="tab-ico">✦</span> درباره
+      </button>
+    </nav>
+
+    <main>
+      <!-- ============================================================ CREATE -->
+      <section id="panel-create" role="tabpanel" aria-labelledby="tab-create" class="panel is-active">
+        <div class="card">
+          <h2>محتوا</h2>
+          <div class="chips" id="presetChips">
+            <button class="chip is-active" data-preset="text">متن</button>
+            <button class="chip" data-preset="url">پیوند</button>
+            <button class="chip" data-preset="geo">مکان من</button>
+            <button class="chip" data-preset="wifi">وای‌فای</button>
+            <button class="chip" data-preset="file">فایل</button>
+          </div>
+          <textarea
+            id="payload"
+            rows="4"
+            spellcheck="false"
+            placeholder="متن، پیوند یا هر داده‌ای که می‌خواهید در نماد بنشیند…"
+          >https://simurgh.code</textarea>
+          <input type="file" id="fileInput" hidden />
+          <div class="row between">
+            <label class="check">
+              <input type="checkbox" id="autoUrl" checked />
+              <span>پیوند‌ها فشرده شوند (حالت URL)</span>
+            </label>
+            <output id="charCount" class="muted">—</output>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>
+            قفل رمزنگاری
+            <span class="badge" id="sealBadge">خاموش</span>
+          </h2>
+          <label class="switch">
+            <input type="checkbox" id="sealToggle" />
+            <span class="track"><span class="knob"></span></span>
+            <span class="switch-label">محتوا درون پاکت SECURE مهر و موم شود</span>
+          </label>
+          <div class="seal-body" id="sealBody" hidden>
+            <label class="field">
+              <span>گذرواژه</span>
+              <input type="password" id="passphrase" placeholder="گذرواژه‌ای که فقط گیرنده می‌داند" autocomplete="off" />
+            </label>
+            <div class="row">
+              <label class="field grow">
+                <span>هزینهٔ PBKDF2</span>
+                <select id="iterations">
+                  <option value="210000" selected>۲۱۰٬۰۰۰ (پیشنهاد OWASP)</option>
+                  <option value="120000">۱۲۰٬۰۰۰</option>
+                  <option value="40000">۴۰٬۰۰۰ (سریع)</option>
+                  <option value="10000">۱۰٬۰۰۰ (آزمون)</option>
+                </select>
+              </label>
+              <label class="field grow">
+                <span>زمینهٔ نهفته (اختیاری)</span>
+                <input type="text" id="sealContext" placeholder="مثلاً شمارهٔ فاکتور" autocomplete="off" />
+              </label>
+            </div>
+            <p class="note">
+              الگوریتم: <code>AEAD_CHACHA20_POLY1305</code> (RFC 8439) با اشتقاق کلید
+              <code>PBKDF2-HMAC-SHA256</code>. نماد بدون گذرواژه فقط «قفل است» و اندازهٔ راز را نشان می‌دهد؛
+              نماد آسیب‌دیده هم فقط تا حد رمزنگاری‌شده ترمیم می‌شود، نه تا متن اصلی.
+            </p>
+            <div class="kv" id="sealMeta" hidden></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>ظاهر و استحکام</h2>
+          <div class="row wrap">
+            <label class="field">
+              <span>تصحیح خطا</span>
+              <select id="ecc">
+                <option value="L">L — ۱۶٪ (بیشترین ظرفیت)</option>
+                <option value="M" selected>M — ۲۸٪ (متعادل)</option>
+                <option value="Q">Q — ۴۰٪ (مقاوم)</option>
+                <option value="H">H — ۵۵٪ (بازیابی شدید)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>شکل خانه‌ها</span>
+              <select id="shape">
+                <option value="dot" selected>دایره</option>
+                <option value="hex">شش‌ضلعی</option>
+                <option value="square">مربع</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>اندازهٔ پیکسل</span>
+              <select id="scale">
+                <option value="4">ریز (۴)</option>
+                <option value="8" selected>معمولی (۸)</option>
+                <option value="12">بزرگ (۱۲)</option>
+                <option value="16">چاپ (۱۶)</option>
+              </select>
+            </label>
+          </div>
+          <div class="themes" id="themes" aria-label="پالت رنگ"></div>
+          <div class="row between">
+            <label class="check">
+              <input type="checkbox" id="showCaption" checked />
+              <span>زیرنویس زیر نماد</span>
+            </label>
+            <span class="muted" id="contrastNote"></span>
+          </div>
+        </div>
+
+        <div class="card symbol-card">
+          <div class="symbol-stage" id="stage">
+            <div class="placeholder" id="placeholder">در حال ساخت نماد…</div>
+          </div>
+          <div class="kv" id="symbolMeta"></div>
+          <div class="actions">
+            <button class="primary" id="downloadPng">دانلود PNG</button>
+            <button id="downloadSvg">دانلود SVG</button>
+            <button id="selfTest">آزمون بازخوانی</button>
+            <button class="ghost" id="copyText">کپی متن</button>
+          </div>
+          <p class="note" id="selfTestNote" hidden></p>
+        </div>
+      </section>
+
+      <!-- ============================================================= SCAN -->
+      <section id="panel-scan" role="tabpanel" aria-labelledby="tab-scan" class="panel">
+        <div class="card">
+          <div class="viewfinder" id="viewfinder">
+            <video id="video" playsinline muted autoplay></video>
+            <canvas id="overlay" aria-hidden="true"></canvas>
+            <div class="vf-hint" id="vfHint">
+              <p>دوربین را روی نماد بگیرید.</p>
+              <button class="primary" id="startCamera">شروع دوربین</button>
+              <button id="pickImage">یا انتخاب تصویر</button>
+              <input type="file" id="scanFile" accept="image/*" hidden />
+            </div>
+            <div class="vf-status" id="vfStatus" hidden></div>
+          </div>
+          <div class="row between scan-controls">
+            <label class="check">
+              <input type="checkbox" id="torch" disabled />
+              <span>چراغ قوه</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="continuous" checked />
+              <span>اسکن پیوسته</span>
+            </label>
+            <button class="ghost" id="stopCamera" hidden>توقف</button>
+          </div>
+        </div>
+
+        <div class="card" id="resultCard" hidden>
+          <h2>
+            نتیجه
+            <span class="badge" id="resultBadge"></span>
+          </h2>
+          <pre class="result" id="resultText"></pre>
+          <div class="kv" id="resultMeta"></div>
+          <div id="unlockBox" hidden>
+            <label class="field">
+              <span>گذرواژهٔ این نماد</span>
+              <input type="password" id="unlockPass" placeholder="گذرواژه را وارد کنید" autocomplete="off" />
+            </label>
+            <div class="actions">
+              <button class="primary" id="unlockBtn">بازکردن پاکت</button>
+              <span class="note" id="unlockNote"></span>
+            </div>
+          </div>
+          <div class="actions" id="resultActions" hidden>
+            <button class="primary" id="openLink" hidden>بازکردن پیوند</button>
+            <button id="copyResult">کپی</button>
+            <button class="ghost" id="clearResult">پاک‌کردن</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>آزمایش بدون دوربین</h2>
+          <p class="note">
+            برای اطمینان از درستی لولهٔ اسکن روی همین دستگاه، نمادی بسازید و بلافاصله از روی پیکسل‌هایش
+            بازخوانی کنید — همان مسیری که دوربین طی می‌کند.
+          </p>
+          <div class="actions">
+            <button id="loopTest">ساخت + اسکن نماد نمونه</button>
+            <button id="loopTestSealed">نمونهٔ قفل‌شده</button>
+          </div>
+          <p class="note" id="loopNote" hidden></p>
+        </div>
+      </section>
+
+      <!-- ============================================================ ABOUT -->
+      <section id="panel-about" role="tabpanel" aria-labelledby="tab-about" class="panel">
+        <div class="card">
+          <h2>سیمرغ‌کد چیست؟</h2>
+          <p>
+            یک نماد دوبعدی کاملاً جدید: میدان دادهٔ شش‌گوشِ حلقوی، با «تاج قالب» از ۲۴ مهرهٔ
+            <span dir="ltr">Golay(24,12)</span> و «نوار زاویه» از ۶۳ دندانِ m-sequence که جهت مطلق را
+            بدون هیچ الگوی جست‌وجوی چهارگوش (مثل QR) تعیین می‌کند. نتیجه: چرخش کامل ۳۶۰°، تحمل پارگی
+            تا حدود ۱۸٪ در سطح H، و ظرفیت تا ۲۶۸۹ بایت.
+          </p>
+          <div class="kv" id="aboutMeta"></div>
+        </div>
+        <div class="card">
+          <h2>ادعای امنیتی، صادقانه</h2>
+          <ul class="tight">
+            <li>
+              <strong>قفل‌شده:</strong> محتوا با ChaCha20-Poly1305 مهر می‌شود. بدون کلید، نه متن به‌دست می‌آید،
+              نه حتی یک بایت آن تغییرپذیر است (تگ ۱۲۸ بیتی هر دستکاری را رد می‌کند).
+            </li>
+            <li>
+              <strong>«بازسازی ریاضی»:</strong> آنچه در QR می‌بینید، بازیابی خطا است — کد ریيد–سالومون بخش
+              آسیب‌دیدهٔ <em>دادهٔ آشکار</em> را از روی افزونگی محاسبه می‌کند. در سیمرغ همان افزونگی وجود دارد،
+              اما وقتی نماد قفل باشد، افزونگی روی <em>رمزنگاشته</em> نشسته است: بازسازی ریاضی، رمزنگاشته را
+              کامل می‌کند، نه متن را. بدون کلید، نتیجه همان قفل است.
+            </li>
+            <li>
+              <strong>محدودیت واقعی:</strong> امنیت به اندازهٔ گذرواژهٔ شماست. گذرواژهٔ کوتاه با جست‌وجوی
+              برخط شکسته می‌شود؛ هزینهٔ PBKDF2 را بالا نگه دارید و گذرواژهٔ بلند انتخاب کنید.
+            </li>
+          </ul>
+        </div>
+        <div class="card">
+          <h2>نصب روی اندروید</h2>
+          <p class="note">
+            این برنامه یک PWA کامل است: در کروم اندروید «افزودن به صفحهٔ اصلی» بزنید تا آفلاین کار کند.
+            برای بستهٔ APK، پوشهٔ <code dir="ltr">apps/android</code> پروژهٔ Capacitor را دارد
+            (<code dir="ltr">npm run build:apk</code> با Android SDK).
+          </p>
+          <div class="actions">
+            <button id="installBtn2">نصب برنامه</button>
+            <button class="ghost" id="swStatus">وضعیت آفلاین</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span>سیمرغ‌کد — مشخصات ۱٫۱٫۰</span>
+      <span class="muted" id="perfNote"></span>
+    </footer>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

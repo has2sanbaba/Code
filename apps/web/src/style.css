@@ -214,3 +214,13 @@ footer {
   font-size: 13px;
 }
 footer p { max-width: 90ch; margin: 0 auto; }
+
+/* sealed-symbol notice */
+.warn {
+  color: #f0c36a;
+  background: rgba(240, 195, 106, 0.08);
+  border: 1px solid rgba(240, 195, 106, 0.35);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+}

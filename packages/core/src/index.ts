@@ -10,6 +10,7 @@ export * from './golay.js';
 export * from './crc.js';
 export * from './deflate.js';
 export * from './sha256.js';
+export * from './chacha20.js';
 export * from './geometry.js';
 export * from './format.js';
 export * from './blocks.js';

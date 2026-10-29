@@ -1,6 +1,6 @@
 # SiMurgh Code (SMC) — Symbology Specification
 
-**Version 1.0.0 — 2026-10-28 — normative**
+**Version 1.1.0 — 2026-10-29 — normative**
 
 > **چکیدهٔ فارسی** — «سیمرغ کد» یک نمادنگاری دوبعدیِ *شعاعی* است: داده به‌جای شبکهٔ مربعی،
 > روی یک شبکهٔ مثلثیِ شش‌گوش در حلقه‌های هم‌مرکز نوشته می‌شود و مرزِ نماد («تاج») از پنج نوار
@@ -267,6 +267,7 @@ The path is a bijection (`Lattice.serpentine[i]`, inverted by
 | 7 | FRAME | streamId 32, index 12, count 12 | multi-symbol streams |
 | 8 | MAC | algo 4, length 12 | authentication tag |
 | 9 | SIGNATURE | algo 4, length 12 | detached signature |
+| 10 | SECURE | suite 4, flags 4 | authenticated envelope, § 9.5 |
 | 15 | VENDOR | id 16, length 16 | private use |
 
 **URL mode.** `scheme` (3 bits: 0=https, 1=http) · `authorityLength` (8) ·
@@ -313,6 +314,10 @@ the payload is at least 24 bytes; the version is then chosen from the *compresse
 length. Zero padding after the final DEFLATE block is harmless because a reader
 stops at `BFINAL`.
 
+For a sealed payload (§ 9.5) the outer `compression` bit is always 0: the
+envelope's ciphertext is incompressible by construction, and the DEFLATE step
+moves *inside* the envelope instead, where it still sees plaintext.
+
 Typical effect on real payloads:
 
 | Payload | Without | With DEFLATE | Symbol |
@@ -321,6 +326,45 @@ Typical effect on real payloads:
 | 6 900 chars of prose | does not fit V4 | fits V4 | — |
 | 47-char URL | V1 | V1 | no change (already small) |
 | 300 random bytes | V11 | V10 | incompressible |
+
+### 9.5 SECURE envelopes (mode 10)
+
+A SECURE segment wraps an arbitrary segment list in an authenticated envelope,
+so the symbology can carry secrets with the same geometry as open payloads.
+
+```
+mode(4) = 10 | suite(4) | flags(4) | saltLen(8) | salt(8*saltLen)
+           | iterations(32) | keyIdLen(4) | keyId(8*keyIdLen)
+           | nonce(96) | ctLen(16) | ciphertext(8*ctLen)   -- ciphertext = ct ‖ tag(128)
+```
+
+* `suite` — 0: passphrase, `key = PBKDF2-HMAC-SHA256(pass, salt, iterations)`
+  (default iterations 210 000); 1: the 32-byte key is supplied directly and
+  `salt`/`iterations` are empty/0.
+* `flags` — bit 0: the plaintext is a raw DEFLATE stream; inflate after
+  opening. Compression always precedes encryption, never the reverse.
+* `nonce` — 96 bits from the platform CSPRNG, never derived from the payload and
+  never reused (nonce reuse under one key breaks any AEAD of this family).
+* `keyId` — `HMAC-SHA256("SiMurgh key id v1", key)[0..4]`, a routing hint.
+* AEAD — `AEAD_CHACHA20_POLY1305` per RFC 8439 § 2.8: one-time Poly1305 key from
+  ChaCha20 block 0, message encryption from counter 1, 128-bit tag.
+* AAD — `utf8("SMC1-SECURE") ‖ suite ‖ keyIdLen ‖ keyId ‖ nonce ‖ context`, where
+  `context` is out-of-band data supplied by the deployment and *not printed*.
+  The domain string is frozen and version-independent on purpose.
+
+A reader without a key MUST still be able to decode the symbol's structure; the
+envelope then reads as an opaque segment and the decoder reports `encrypted`
+together with `suite`, `keyId`, `iterations`, `salt` and the ciphertext length —
+and nothing else. A reader with a key that fails the tag receives exactly the
+same view as a reader with no key: there is no partial plaintext state.
+
+A FRAME segment, when present, stays **outside** the envelope so a multi-symbol
+stream can be reassembled before any key is available.
+
+Wire cost: 328 header bits + 128 tag bits = 57 bytes over the inner segment
+stream, plus at most one byte of stream packing (normative: 57–58).
+
+Security claims, leakage list and test references: **docs/05-SECURITY.md**.
 
 ## 10. Masks
 
@@ -450,7 +494,7 @@ worst case at ≈200 ms instead of ≈23 s on adversarial inputs).
 symbology name : SiMurgh Code
 identifier     : SMC
 AIM prefix     : ]S1        (] = 2D matrix, S = SiMurgh, 1 = version of the spec)
-spec version   : 1.0.0
+spec version   : 1.1.0
 spec date      : 2026-10-28
 ```
 

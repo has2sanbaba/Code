@@ -1,0 +1,17 @@
+{
+  "name": "@simurgh/mobile",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SiMurgh Code mobile app (installable PWA): create and scan SiMurgh symbols, including sealed ones.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5174",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5174",
+    "icons": "node scripts/make-icons.mjs",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@simurgh/core": "1.1.0"
+  }
+}

@@ -17,10 +17,12 @@
  * before giving up.
  */
 import { decode, type DecodeOptions, type DecodeResult } from '../decoder.js';
+import type { SecureDecodeOptions } from '../segments.js';
 import { decodeFormatCrown } from '../format.js';
 import { ANGLE_TRACK, crown, dataRings, MAX_VERSION, MIN_VERSION } from '../geometry.js';
 import type { ModuleShape } from '../model.js';
 import type { GrayImage } from './image.js';
+import { detectPolarity, invertImage } from './image.js';
 import { fitCircle, locate, traceRing, type LocateOptions, type LocateResult } from './locate.js';
 import { composeModelRotation, estimateRotation, refineTransform, similarity, Transform, type RotationEstimate } from './orient.js';
 import { sampleSymbol, type SampledSymbol, type SampleOptions } from './sample.js';
@@ -41,6 +43,16 @@ export interface ImageDecodeOptions {
   versionWindow?: number;
   /** Cap on format candidates tried per rung. Default: bounded by symbol size. */
   maxCandidates?: number;
+  /** Keys for opening a SECURE envelope carried by the symbol. */
+  secure?: SecureDecodeOptions;
+  /**
+   * Ink polarity. 'auto' (the default) picks from the image's dark-pixel
+   * fraction and, if that guess fails, retries the opposite polarity -- so a
+   * white-on-black symbol reads exactly like a black-on-white one.
+   */
+  polarity?: 'auto' | 'normal' | 'inverted';
+  /** Skip the polarity retry (a video scanner may prefer to fail fast). */
+  noPolarityRetry?: boolean;
   onStage?: (stage: string, detail?: unknown) => void;
 }
 
@@ -68,6 +80,10 @@ export interface ImageDiagnostics {
   maskPriorFlagged: number;
   /** Of those, the cells flagged directly rather than as dilated neighbours. */
   maskPriorSeeds: number;
+  /** The image was polarity-flipped before decoding. */
+  inverted: boolean;
+  /** 1 when the opposite polarity was also tried, as a fallback. */
+  polarityRetries: number;
 }
 
 export interface ImageDecodeResult extends DecodeResult {
@@ -124,7 +140,7 @@ function rebuildLoc(loc: LocateResult, version: number, img: GrayImage): LocateR
   };
 }
 
-export function decodeImage(img: GrayImage, opt: ImageDecodeOptions = {}): ImageDecodeResult {
+function decodeOnce(img: GrayImage, opt: ImageDecodeOptions, inverted: boolean): ImageDecodeResult {
   const diag: ImageDiagnostics = {
     width: img.width,
     height: img.height,
@@ -147,6 +163,8 @@ export function decodeImage(img: GrayImage, opt: ImageDecodeOptions = {}): Image
     coreMatches: 0,
     maskPriorFlagged: 0,
     maskPriorSeeds: 0,
+    inverted,
+    polarityRetries: 0,
   };
 
   opt.onStage?.('locate');
@@ -299,6 +317,7 @@ export function decodeImage(img: GrayImage, opt: ImageDecodeOptions = {}): Image
     decompress: opt.decompress,
     candidateVersions: versions,
     maxCandidates: opt.maxCandidates ?? workBound,
+    secure: opt.secure,
   };
 
   const attempts: { label: string; run: () => DecodeResult }[] = [
@@ -354,6 +373,47 @@ export function decodeImage(img: GrayImage, opt: ImageDecodeOptions = {}): Image
     }
   }
   return { ...last, ok: false, diagnostics: diag, sampled };
+}
+
+/**
+ * Decode a symbol out of a grayscale image.
+ *
+ * Polarity is handled here rather than inside the matcher: the Crown's radial
+ * template is signed (dark annuli on a light field), so an inverted photograph
+ * has to be flipped *before* anything can be located. 'auto' measures the
+ * image's dark-pixel fraction, tries that polarity first and -- only if the whole
+ * pipeline fails -- flips and tries again. A light symbol on a dark background
+ * therefore reads exactly like the normal case; it just costs one more pass.
+ * Pin `polarity` to skip the guess, or set `noPolarityRetry` to skip the fallback
+ * when a video scanner would rather move on to the next frame.
+ */
+export function decodeImage(img0: GrayImage, opt: ImageDecodeOptions = {}): ImageDecodeResult {
+  const mode = opt.polarity ?? 'auto';
+  const guess = mode === 'auto' ? detectPolarity(img0) : mode;
+  const firstInverted = guess === 'inverted';
+  const first = firstInverted ? invertImage(img0) : img0;
+
+  let res = decodeOnce(first, opt, firstInverted);
+  if (res.ok || mode !== 'auto' || opt.noPolarityRetry) return res;
+
+  const second = firstInverted ? img0 : invertImage(img0);
+  const retry = decodeOnce(second, opt, !firstInverted);
+  retry.diagnostics.polarityRetries = 1;
+  if (retry.ok) return retry;
+
+  /*
+   * Both polarities failed. Report the one that got further: "no symbol found"
+   * and "Angle Track correlation too weak" are different diagnoses, and which
+   * polarity produced the better one depends on the photograph, not on the guess.
+   */
+  const depth = (r: ImageDecodeResult): number => {
+    const d = r.diagnostics;
+    if (!d.locate) return 0;
+    if (d.teethMatches === 0) return 1;
+    if (!d.format) return 2;
+    return 3 + (r.stats?.erasureSymbols ?? 0) / 1000;
+  };
+  return depth(retry) > depth(res) ? retry : res;
 }
 
 /**

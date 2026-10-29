@@ -90,6 +90,30 @@
                 <span>فشرده‌سازی <span class="latin">DEFLATE</span></span>
                 <input type="checkbox" id="compression" checked />
               </label>
+              <label class="field inline">
+                <span>پالت رنگ</span>
+                <select id="theme"></select>
+              </label>
+              <label class="field inline">
+                <span>قفل <span class="latin">SECURE</span></span>
+                <input type="checkbox" id="seal" />
+              </label>
+              <label class="field inline grow">
+                <span>گذرواژهٔ قفل</span>
+                <input type="password" id="seal-pass" placeholder="خالی = بدون قفل" autocomplete="off" />
+              </label>
+              <label class="field inline">
+                <span>تکرار PBKDF2</span>
+                <select id="seal-iter">
+                  <option value="210000" selected>۲۱۰٬۰۰۰</option>
+                  <option value="40000">۴۰۰۰۰</option>
+                  <option value="10000">۱۰٬۰۰۰ (سریع)</option>
+                </select>
+              </label>
+              <label class="field inline grow">
+                <span>زمینهٔ نهفته (چاپ نمی‌شود)</span>
+                <input type="text" id="seal-context" placeholder="اختیاری" autocomplete="off" />
+              </label>
             </div>
 
             <div class="row wrap controls">

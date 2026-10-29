@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">سیمرغ‌کد</string>
+    <string name="title_activity_main">سیمرغ‌کد</string>
+    <string name="package_name">code.simurgh.scanner</string>
+    <string name="custom_url_scheme">code.simurgh.scanner</string>
+</resources>

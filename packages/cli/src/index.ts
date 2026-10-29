@@ -14,6 +14,7 @@
  * the world writes.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { pbkdf2Sync } from 'node:crypto';
 import { extname, resolve } from 'node:path';
 import {
   AIM_PREFIX,
@@ -28,14 +29,19 @@ import {
   decode,
   encode,
   getLattice,
+  hexDecode,
+  hexEncode,
   payloadToText,
   toModel,
   unpackFormat,
   type EccLevel,
   type Payload,
+  type SecureDecodeOptions,
+  type SecureEncodeOptions,
 } from '@simurgh/core';
-import { renderAscii, renderRaster, renderSVG } from '@simurgh/core/render';
+import { renderAscii, renderRaster, renderRGBA, renderSVG, resolveTheme } from '@simurgh/core/render';
 import { decodeImage } from '@simurgh/core/imaging';
+import { inflateRaw } from '@simurgh/core';
 import { decodePNG, encodePNG, pngToGray } from './png.js';
 
 /* ------------------------------------------------------------- arg parsing */
@@ -149,6 +155,7 @@ function cmdEncode(args: Args): number {
   const versionFlag = strFlag(args, 'version', 'V');
   const maskFlag = strFlag(args, 'mask', 'm');
   const compression = !boolFlag(args, 'no-compress', 'no-compression');
+  const secure = secureEncodeOptions(args);
 
   const sym = encode({
     ...payload,
@@ -156,15 +163,32 @@ function cmdEncode(args: Args): number {
     version: versionFlag === undefined ? undefined : Number(versionFlag),
     mask: maskFlag === undefined ? undefined : Number(maskFlag),
     compression,
+    ...(secure ? { secure } : {}),
   });
 
   const out = strFlag(args, 'out', 'o');
   const format = (strFlag(args, 'format') ?? (out ? extname(out).slice(1).toLowerCase() : 'ascii')) || 'ascii';
   const scale = numFlag(args, out && format === 'png' ? 12 : 8, 'scale', 's');
   const shape = (strFlag(args, 'shape') ?? 'dot') as 'dot' | 'hex' | 'square';
+  const themeFlag = strFlag(args, 'theme');
+  const theme = themeFlag === undefined ? undefined : resolveTheme(themeFlag);
   const quiet = numFlag(args, -1, 'quiet', 'q');
   const caption = strFlag(args, 'caption');
-  const text = payload.text ?? payload.url ?? payloadToText(decode({ dataBits: sym.dataBits, format: unpackFormat(sym.formatBits) }).payload!);
+  /*
+   * `text` is what may be *shown*: for a sealed symbol that is the envelope
+   * placeholder, never the secret -- the caption is printed next to the symbol,
+   * so putting the plaintext there would undo the encryption. `plainText` is the
+   * real content, recovered with the key we were just given, and is used only to
+   * check the self-test.
+   */
+  const recovered = decode(
+    { dataBits: sym.dataBits, beads: sym.beads, format: unpackFormat(sym.formatBits) },
+    secure ? { secure: secureDecodeOptions(args, sym.secure!) } : {},
+  );
+  const plainText = recovered.ok ? payloadToText(recovered.payload!) : '';
+  const text = secure
+    ? `[encrypted ${sym.secure!.ciphertext.length - 16} B, key id ${hexEncode(sym.secure!.keyId)}]`
+    : (payload.text ?? payload.url ?? plainText);
 
   const model = toModel(sym, caption ?? text.slice(0, 60));
 
@@ -177,20 +201,31 @@ function cmdEncode(args: Args): number {
         scale: numFlag(args, 4, 'unit-scale'),
         unit: (strFlag(args, 'unit') ?? 'mm') as 'mm' | 'px' | 'pt' | 'in',
         shape,
-        caption: caption ?? (boolFlag(args, 'no-caption') ? null : text.slice(0, 96)),
+        theme,
+        caption: sym.secure ? null : caption ?? (boolFlag(args, 'no-caption') ? null : text.slice(0, 96)),
         quiet: quiet >= 0 ? quiet : undefined,
         showGeometry: boolFlag(args, 'geometry'),
       });
       break;
     case 'png': {
-      const img = renderRaster(model, {
-        scale,
-        shape,
-        quiet: quiet >= 0 ? quiet : undefined,
-        dark: numFlag(args, 0, 'dark'),
-        light: numFlag(args, 255, 'light'),
-      });
-      bytes = encodePNG(img.width, img.height, img.data, { channels: 1, level: 9 });
+      if (theme) {
+        /*
+         * A themed PNG keeps its colours: RGBA straight into the encoder. The
+         * grayscale path below is left exactly as it was, so --dark/--light still
+         * mean what they always meant.
+         */
+        const rgba = renderRGBA(model, { scale, shape, quiet: quiet >= 0 ? quiet : undefined, theme });
+        bytes = encodePNG(rgba.width, rgba.height, rgba.data, { channels: 4, level: 9 });
+      } else {
+        const img = renderRaster(model, {
+          scale,
+          shape,
+          quiet: quiet >= 0 ? quiet : undefined,
+          dark: numFlag(args, 0, 'dark'),
+          light: numFlag(args, 255, 'light'),
+        });
+        bytes = encodePNG(img.width, img.height, img.data, { channels: 1, level: 9 });
+      }
       break;
     }
     case 'pgm': {
@@ -237,21 +272,26 @@ function cmdEncode(args: Args): number {
   if (boolFlag(args, 'selftest', 'verify')) {
     const img = renderRaster(model, { scale: numFlag(args, 10, 'selftest-scale'), shape });
     const t0 = Date.now();
-    const res = decodeImage(img);
+    const res = decodeImage(img, secure ? { secure: secureDecodeOptions(args, sym.secure!) } : {});
     const ms = Date.now() - t0;
     const d = res.diagnostics;
     if (!res.ok) {
       process.stderr.write(`selftest FAILED after ${ms} ms: ${res.error}\n`);
       return 1;
     }
+    if (secure && !res.secureUnlocked) {
+      process.stderr.write(`selftest FAILED: the symbol decoded but the envelope stayed sealed -- wrong key?\n`);
+      return 1;
+    }
     const got = payloadToText(res.payload!);
-    const ok = got === text;
+    const expect = secure ? plainText : text;
+    const ok = got === expect;
     process.stderr.write(
       `selftest ${ok ? 'ok' : 'MISMATCH'} in ${ms} ms: teeth ${d.teethMatches}/63 crown=${d.crownOk ? 'yes' : 'no'} ` +
         `pitch=${d.pitch.toFixed(2)} rot=${d.rotationDeg.toFixed(1)} conf=${d.meanConfidence.toFixed(2)} erasures=${d.erasureCells}\n`,
     );
     if (!ok) {
-      process.stderr.write(`  expected: ${text}\n  decoded:  ${got}\n`);
+      process.stderr.write(`  expected: ${secure ? plainText : text}\n  decoded:  ${got}\n`);
       return 1;
     }
   }
@@ -298,6 +338,20 @@ function symbolRecord(sym: ReturnType<typeof encode>, text: string): Record<stri
     },
     segments: sym.segments.map((s) => (s.kind === 'byte' ? { kind: s.kind, bytes: s.value.length } : s)),
     payloadBytes: sym.payloadBytes.length,
+    ...(sym.secure
+      ? {
+          secure: {
+            suite: sym.secure.suite === 0 ? 'PBKDF2-HMAC-SHA256 + CHACHA20-POLY1305' : 'raw key + CHACHA20-POLY1305',
+            keyId: hexEncode(sym.secure.keyId),
+            salt: hexEncode(sym.secure.salt),
+            iterations: sym.secure.iterations,
+            nonce: hexEncode(sym.secure.nonce),
+            ciphertextBytes: sym.secure.ciphertext.length,
+            plaintextBytes: sym.secure.ciphertext.length - 16,
+            deflated: (sym.secure.flags & 1) !== 0,
+          },
+        }
+      : {}),
     text,
   };
 }
@@ -305,10 +359,93 @@ function symbolRecord(sym: ReturnType<typeof encode>, text: string): Record<stri
 function summaryLine(sym: ReturnType<typeof encode>, text: string): string {
   const lat = getLattice(sym.version);
   const preview = text.length > 48 ? `${text.slice(0, 45)}...` : text;
+  const seal = sym.secure
+    ? `SECURE(key ${hexEncode(sym.secure.keyId)} ${sym.secure.suite === 0 ? `PBKDF2x${sym.secure.iterations}` : 'raw'} ` +
+      `${sym.secure.ciphertext.length - 16} B sealed) `
+    : '';
   return (
     `${SYMBOLOGY_ID} version ${sym.version} (K=${lat.K}, ${lat.N} cells) ECC ${sym.ecc} mask ${sym.mask} ` +
-    `${sym.compression ? 'DEFLATE ' : ''}${sym.plan.payloadBytes} B payload / ${sym.plan.codewords} cw / ${sym.plan.blocks} block(s) ` +
+    `${seal}${sym.compression ? 'DEFLATE ' : ''}${sym.plan.payloadBytes} B payload / ${sym.plan.codewords} cw / ${sym.plan.blocks} block(s) ` +
     `ink ${(sym.inkCoverage * 100).toFixed(1)}% printed diameter ${2 * lat.K + 10} modules\n  "${preview}"\n`
+  );
+}
+
+/* ------------------------------------------------------------------ secure */
+
+/** Build the encode-side envelope options from --pass / --key-hex and friends. */
+function secureEncodeOptions(args: Args): SecureEncodeOptions | null {
+  const pass = strFlag(args, 'pass');
+  const keyHex = strFlag(args, 'key-hex');
+  const keyFile = strFlag(args, 'key-file');
+  if (pass === undefined && keyHex === undefined && keyFile === undefined) return null;
+
+  let key: string | Uint8Array;
+  if (keyHex !== undefined) key = hexDecode(keyHex.trim());
+  else if (keyFile !== undefined) key = new Uint8Array(readFileSync(resolve(keyFile)));
+  else key = pass as string;
+
+  const opt: SecureEncodeOptions = { key };
+  const iterations = strFlag(args, 'iterations');
+  if (iterations !== undefined) opt.iterations = Number(iterations);
+  const salt = strFlag(args, 'salt');
+  if (salt !== undefined) opt.salt = hexDecode(salt.trim());
+  const keyId = strFlag(args, 'key-id');
+  if (keyId !== undefined) opt.keyId = hexDecode(keyId.trim());
+  const context = strFlag(args, 'context');
+  if (context !== undefined) opt.context = context;
+  if (boolFlag(args, 'no-secure-compress')) opt.compress = false;
+  return opt;
+}
+
+/**
+ * Build the decode-side key options from --pass / --key-hex / --key-file / --keys.
+ *
+ * `hint` supplies the envelope's own salt and iteration count, which are only
+ * known after the symbol has been read; with it the CLI derives through
+ * node:crypto (native, ~30 ms at 210 000 iterations) instead of the portable
+ * implementation (~3 s).
+ */
+function secureDecodeOptions(args: Args, hint?: { salt: Uint8Array; iterations: number }): SecureDecodeOptions {
+  const opt: SecureDecodeOptions = {};
+  const pass = strFlag(args, 'pass');
+  const keyHex = strFlag(args, 'key-hex');
+  const keyFile = strFlag(args, 'key-file');
+  const context = strFlag(args, 'context');
+  if (context !== undefined) opt.context = context;
+
+  if (keyHex !== undefined) {
+    opt.key = hexDecode(keyHex.trim());
+  } else if (keyFile !== undefined) {
+    opt.key = new Uint8Array(readFileSync(resolve(keyFile)));
+  } else if (pass !== undefined) {
+    opt.key = hint
+      ? new Uint8Array(pbkdf2Sync(pass, Buffer.from(hint.salt), Math.max(1, hint.iterations), 32, 'sha256'))
+      : pass;
+  }
+
+  const ring = strFlag(args, 'keys');
+  if (ring !== undefined) {
+    // One key per line: "<hex key id>=<passphrase>" or just "<passphrase>".
+    opt.keys = readFileSync(resolve(ring), 'utf8')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith('#'))
+      .map((line) => {
+        const eq = line.indexOf('=');
+        if (eq < 0) return { key: line };
+        return { keyId: hexDecode(line.slice(0, eq).trim()), key: line.slice(eq + 1) };
+      });
+  }
+  return opt;
+}
+
+/** True when any key material was supplied on the command line. */
+function wantsKey(args: Args): boolean {
+  return (
+    strFlag(args, 'pass') !== undefined ||
+    strFlag(args, 'key-hex') !== undefined ||
+    strFlag(args, 'key-file') !== undefined ||
+    strFlag(args, 'keys') !== undefined
   );
 }
 
@@ -330,8 +467,32 @@ function cmdDecode(args: Args): number {
     } else {
       gray = pngToGray(decodePNG(bytes));
     }
+    const keyed = wantsKey(args);
     const t0 = Date.now();
-    const res = decodeImage(gray);
+    let res = decodeImage(gray, keyed ? { secure: secureDecodeOptions(args) } : {});
+
+    /*
+     * A passphrase cannot become a key until the envelope has been read (its salt
+     * and iteration count are printed in the symbol). So read once, and if that
+     * yielded a sealed payload, derive natively and re-open from the bits already
+     * sampled -- no second pass over the image.
+     */
+    if (res.ok && res.encrypted && !res.secureUnlocked && keyed && res.sampled && res.secureInfo) {
+      const info = res.secureInfo;
+      const reopened = decode(
+        {
+          dataBits: res.sampled.dataBits,
+          confidence: res.sampled.confidence,
+          beads: res.sampled.beads,
+          format: res.format,
+        },
+        {
+          decompress: (raw) => inflateRaw(raw),
+          secure: secureDecodeOptions(args, { salt: hexDecode(info.salt), iterations: info.iterations }),
+        },
+      );
+      if (reopened.ok) res = { ...reopened, diagnostics: res.diagnostics, sampled: res.sampled };
+    }
     const ms = Date.now() - t0;
 
     if (!res.ok) {
@@ -345,6 +506,22 @@ function cmdDecode(args: Args): number {
     }
 
     const text = payloadToText(res.payload!);
+    if (res.encrypted && !res.secureUnlocked) {
+      const info = res.secureInfo!;
+      const line =
+        `LOCKED: ${info.plaintextBytes} B sealed with ` +
+        `${info.suite === 0 ? `PBKDF2-HMAC-SHA256 (${info.iterations} iterations)` : 'a raw 256-bit key'} + ChaCha20-Poly1305, ` +
+        `key id ${info.keyId || '(none)'}`;
+      if (asJson) {
+        process.stdout.write(
+          `${JSON.stringify({ file, ok: true, encrypted: true, unlocked: false, secure: info, ms, diagnostics: res.diagnostics }, null, 2)}\n`,
+        );
+      } else {
+        process.stdout.write(`${line}\n`);
+        process.stderr.write(`  ${file}: ${line}\n  pass --pass <passphrase>, --key-hex <64 hex> or --keys <ring file> to open it\n`);
+      }
+      continue;
+    }
     if (asJson) {
       process.stdout.write(
         `${JSON.stringify(
@@ -358,6 +535,7 @@ function cmdDecode(args: Args): number {
             ecc: res.ecc,
             mask: res.mask,
             compressed: res.compression === 1,
+            ...(res.encrypted ? { encrypted: true, unlocked: res.secureUnlocked === true, secure: res.secureInfo } : {}),
             segments: res.payload!.segments.map((s) => (s.kind === 'byte' ? { kind: s.kind, bytes: s.value.length } : s)),
             text,
             bytes: binaryOf(res.payload!),
@@ -374,7 +552,7 @@ function cmdDecode(args: Args): number {
     if (verbose || files.length > 1) {
       const d = res.diagnostics;
       process.stderr.write(
-        `  ${file}: v${res.version} ${res.ecc} mask=${res.mask}${res.compression ? ' DEFLATE' : ''} in ${ms} ms | ` +
+        `  ${file}: v${res.version} ${res.ecc} mask=${res.mask}${res.compression ? ' DEFLATE' : ''}${res.encrypted ? (res.secureUnlocked ? ' SECURE(opened)' : ' SECURE(locked)') : ''} in ${ms} ms | ` +
           `${d.width}x${d.height}px pitch=${d.pitch.toFixed(2)} rot=${d.rotationDeg.toFixed(1)}deg ${d.transformKind} rms=${d.transformRms.toFixed(2)} | ` +
           `teeth=${d.teethMatches}/63 crown=${d.crownOk ? 'ok' : 'no'} golay-d=${d.golayDistance} conf=${d.meanConfidence.toFixed(2)} ` +
           `erasures=${d.erasureCells} (seeds ${d.maskPriorSeeds}) errors-fixed=${res.stats?.errorsFixed ?? 0} crc=${res.stats?.crcOk ? 'ok' : 'BAD'}\n`,
@@ -589,6 +767,9 @@ Encode
       --format <fmt>        svg | png | pgm | ascii | json   (default ascii)
   -s, --scale <n>           pixels (or units) per module pitch (default 8; png 12)
       --shape <s>           dot | hex | square               (default dot)
+      --theme <id>          palette for svg/png: ink, lapis, turquoise, saffron,
+                            rosewater, pistachio, pomegranate, night
+                            (contrast is checked; see docs/05)
   -e, --ecc <L|M|Q|H>       error correction level           (default M)
   -V, --version <1..40>     pin the symbol size
   -m, --mask <0..7>         pin the data mask
@@ -603,9 +784,30 @@ Encode
       --geometry            draw the Crown's measurement radii (SVG)
       --selftest            render, then read the image back and verify
 
+Encryption (SECURE envelope, AEAD_CHACHA20_POLY1305 -- RFC 8439)
+      --pass <passphrase>   seal the payload with this passphrase
+      --key-hex <64 hex>    seal with a raw 256-bit key instead
+      --key-file <path>     read the 32-byte raw key from a file
+      --iterations <n>      PBKDF2 cost (default 210000, the OWASP 2023 figure)
+      --salt <hex>          fix the PBKDF2 salt (default: 16 random bytes)
+      --key-id <hex>        override the printed key identifier
+      --context <text>      authenticate out-of-band data that is NOT printed
+      --no-secure-compress  do not DEFLATE the plaintext inside the envelope
+
+  The same flags open a symbol again on the decode side. A sealed symbol still
+  decodes as a symbol without any key -- its shape, version, ECC and the size of
+  the secret are readable -- but its contents are ciphertext, and a damaged
+  sealed symbol cannot be completed by calculation: the Reed-Solomon layer
+  repairs the *ciphertext*, never the plaintext.
+
 Decode
   -j, --json                machine-readable output, diagnostics included
   -v, --verbose             print pose, confidence and correction statistics
+      --pass <passphrase>   open a SECURE envelope
+      --key-hex <64 hex>    open with a raw 256-bit key
+      --key-file <path>     read the 32-byte raw key from a file
+      --keys <ring file>    try several keys; lines are "<hex key id>=<pass>"
+      --context <text>      the out-of-band context the encoder authenticated
 
 Bench
   -n, --rounds <n>          repetitions per measurement (default 3)
@@ -615,6 +817,9 @@ Examples
   simurgh encode "https://example.com/fa/سلام" -o symbol.svg --selftest
   cat payload.bin | simurgh encode --stdin --binary -o symbol.png -e H -s 16
   simurgh decode scan.png --json | jq .text
+  simurgh encode "رمز گاوصندوق ۴۷۱۲" --pass 'correct horse' -o vault.png --selftest
+  simurgh decode vault.png                     # -> LOCKED: 23 B sealed with PBKDF2...
+  simurgh decode vault.png --pass 'correct horse'
   simurgh capacity --ecc H --version 10
 `;
 

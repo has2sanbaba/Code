@@ -8,14 +8,25 @@
  */
 import { ANGLE_TRACK, BEADS, TEETH, TOOTH_DEG } from '../geometry.js';
 import type { ModuleShape, SymbolModel } from '../model.js';
+import { resolveTheme, themeContrast, type SmcTheme } from './theme.js';
 
 export interface SvgOptions {
   shape?: ModuleShape;
   /** Pixels (or mm/pt/in -- whatever unit you set) per module pitch. */
   scale?: number;
   unit?: 'px' | 'mm' | 'pt' | 'in';
+  /** Module ink colour. Overrides the theme. */
   dark?: string;
+  /** Substrate colour. Overrides the theme. */
   light?: string;
+  /**
+   * A built-in palette ('lapis', 'turquoise', 'saffron', ...) or an inline
+   * theme. Colour never touches the geometry, so any theme stays scannable as
+   * long as its contrast ratio does; see `themeContrast`.
+   */
+  theme?: string | SmcTheme;
+  /** Paint the Format Crown in a second ink. Defaults to the theme's crown. */
+  crownColour?: string;
   /** Draw the quiet zone as an explicit light square. Default true. */
   quietZone?: boolean;
   quiet?: number;
@@ -71,8 +82,10 @@ function polygonPath(cx: number, cy: number, r: number, sides: number, rotDeg: n
 export function renderSVG(m: SymbolModel, opt: SvgOptions = {}): string {
   const p = opt.precision ?? 3;
   const shape = opt.shape ?? 'dot';
-  const dark = opt.dark ?? '#000000';
-  const light = opt.light ?? '#ffffff';
+  const theme = resolveTheme(opt.theme);
+  const dark = opt.dark ?? theme.ink;
+  const crownInk = opt.crownColour ?? (opt.dark !== undefined ? opt.dark : theme.crown);
+  const light = opt.light ?? theme.paper;
   const quietZone = opt.quietZone !== false;
   const quiet = opt.quiet ?? (quietZone ? m.crown.quietZone : 0);
   const gap = opt.cellGap ?? (shape === 'dot' ? 1 : 0.94);
@@ -96,7 +109,9 @@ export function renderSVG(m: SymbolModel, opt: SvgOptions = {}): string {
   if (opt.metadata !== false) {
     const meta = m.meta;
     out.push('<!--');
-    out.push(`  SiMurgh Code (SMC)  spec 1.0`);
+    const tc = themeContrast({ ...theme, ink: dark, crown: crownInk, paper: light });
+    out.push(`  SiMurgh Code (SMC)  spec 1.1`);
+    out.push(`  theme ${theme.id}  ink ${dark}  crown ${crownInk}  paper ${light}  contrast ${tc.worst.toFixed(2)}:1 (${tc.verdict})`);
     out.push(`  version ${m.version}  K=${m.K}  ECC ${meta.ecc}  mask ${meta.mask}  compression ${meta.compression}`);
     out.push(`  cells ${meta.cells}  codewords ${meta.codewords} (${meta.dataCodewords} data + ${meta.parityCodewords} parity) in ${meta.blocks} RS blocks`);
     out.push(`  payload ${meta.payloadBytes} bytes  ink coverage ${(meta.inkCoverage * 100).toFixed(1)}%`);
@@ -109,7 +124,7 @@ export function renderSVG(m: SymbolModel, opt: SvgOptions = {}): string {
   // --- Crown: Limbus + Halo ------------------------------------------------
   const ring = (rIn: number, rOut: number) => {
     const rr = (rIn + rOut) / 2;
-    return `<circle cx="0" cy="0" r="${fmt(rr, p)}" fill="none" stroke="${dark}" stroke-width="${fmt(rOut - rIn, p)}"/>`;
+    return `<circle cx="0" cy="0" r="${fmt(rr, p)}" fill="none" stroke="${crownInk}" stroke-width="${fmt(rOut - rIn, p)}"/>`;
   };
   out.push(ring(g.limbusInner, g.limbusOuter));
   out.push(ring(g.haloInner, g.haloOuter));
@@ -124,7 +139,7 @@ export function renderSVG(m: SymbolModel, opt: SvgOptions = {}): string {
       const rOut = i === 0 ? g.beakRadius : g.teethOuter;
       teethPaths.push(annularSector(g.teethInner, rOut, c - halfTooth, c + halfTooth, p));
     }
-    out.push(`<path d="${teethPaths.join(' ')}" fill="${dark}"/>`);
+    out.push(`<path d="${teethPaths.join(' ')}" fill="${crownInk}"/>`);
     void halfTooth;
   }
 
@@ -137,7 +152,7 @@ export function renderSVG(m: SymbolModel, opt: SvgOptions = {}): string {
       const [x, y] = polar(g.beadRadius, i * bd + bd / 2);
       beads.push(`M${fmt(x - g.beadSize, p)},${fmt(y, p)}a${fmt(g.beadSize, p)},${fmt(g.beadSize, p)} 0 1,0 ${fmt(2 * g.beadSize, p)},0a${fmt(g.beadSize, p)},${fmt(g.beadSize, p)} 0 1,0 ${fmt(-2 * g.beadSize, p)},0`);
     }
-    out.push(`<path d="${beads.join('')}" fill="${dark}"/>`);
+    out.push(`<path d="${beads.join('')}" fill="${crownInk}"/>`);
   }
 
   // --- Modules -------------------------------------------------------------
@@ -177,7 +192,7 @@ export function renderSVG(m: SymbolModel, opt: SvgOptions = {}): string {
     const y = half + captionH * 0.72;
     const safe = caption.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     out.push(
-      `<text x="0" y="${fmt(y, p)}" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="${fmt(captionH * 0.6, p)}" fill="${dark}" direction="auto">${safe}</text>`,
+      `<text x="0" y="${fmt(y, p)}" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="${fmt(captionH * 0.6, p)}" fill="${theme.caption ?? dark}" direction="auto">${safe}</text>`,
     );
   }
 

@@ -8,11 +8,16 @@
   "workspaces": [
     "packages/core",
     "packages/cli",
-    "apps/web"
+    "apps/web",
+    "apps/mobile",
+    "apps/android"
   ],
   "scripts": {
     "build": "npm run build -w @simurgh/core && npm run build -w @simurgh/cli",
-    "typecheck": "tsc -b packages/core packages/cli apps/web",
+    "build:all": "npm run build && npm run build -w @simurgh/mobile && npm run build -w @simurgh/web",
+    "mobile": "npm run dev -w @simurgh/mobile",
+    "icons": "npm run build && node apps/mobile/scripts/make-icons.mjs && node apps/android/scripts/make-android-icons.mjs",
+    "typecheck": "tsc -b packages/core packages/cli apps/web apps/mobile",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "npm run dev -w @simurgh/web",

@@ -24,6 +24,7 @@ import {
   xyToAxialF,
 } from '../geometry.js';
 import type { ModuleShape, SymbolModel } from '../model.js';
+import { parseHex, resolveTheme, type SmcTheme } from './theme.js';
 
 export interface GrayImage {
   width: number;
@@ -92,7 +93,15 @@ function shapeDistance(dx: number, dy: number, shape: ModuleShape, gap: number):
  * Signed distance (module units) from a point to the nearest inked feature.
  * Negative = inside ink.
  */
-export function inkDistance(m: SymbolModel, x: number, y: number, shape: ModuleShape, gap: number): number {
+/**
+ * Signed distance to the Format Crown alone: Limbus, Halo, Angle-Track teeth,
+ * Beak and the 24 beads. Negative inside ink.
+ *
+ * Kept separate from the data field so a colour renderer can paint the Crown in
+ * a different ink from the modules -- the two are distinguishable by radius, and
+ * the reader never needs to know, because it thresholds luminance.
+ */
+export function crownDistance(m: SymbolModel, x: number, y: number): number {
   const g = m.crown;
   const r = Math.hypot(x, y);
   let best = Infinity;
@@ -132,6 +141,14 @@ export function inkDistance(m: SymbolModel, x: number, y: number, shape: ModuleS
     }
   }
 
+  return best;
+}
+
+/** Signed distance to the data field alone: core rosette + lattice modules. */
+export function fieldDistance(m: SymbolModel, x: number, y: number, shape: ModuleShape, gap: number): number {
+  const g = m.crown;
+  const r = Math.hypot(x, y);
+  let best = Infinity;
   // --- Lattice: Core rosette + data field ----------------------------------
   if (r <= g.haloInner + 0.6) {
     const f = xyToAxialF(x, y);
@@ -158,6 +175,16 @@ export function inkDistance(m: SymbolModel, x: number, y: number, shape: ModuleS
   }
 
   return best;
+}
+
+/**
+ * Signed distance to any ink, Crown or field. This is the function the grayscale
+ * rasteriser has always used; splitting it into {@link crownDistance} and
+ * {@link fieldDistance} leaves its value bit-identical, because the minimum of
+ * three terms does not depend on how they are grouped.
+ */
+export function inkDistance(m: SymbolModel, x: number, y: number, shape: ModuleShape, gap: number): number {
+  return Math.min(crownDistance(m, x, y), fieldDistance(m, x, y, shape, gap));
 }
 
 export function renderRaster(m: SymbolModel, opt: RasterOptions = {}): GrayImage {
@@ -216,6 +243,110 @@ export function renderRaster(m: SymbolModel, opt: RasterOptions = {}): GrayImage
   // silence unused warning for the fast-path bound
   void yLimit;
   return img;
+}
+
+/* --------------------------------------------------------------- colour */
+
+export interface RgbaImage {
+  width: number;
+  height: number;
+  /** Row-major RGBA, 4 bytes per pixel. */
+  data: Uint8Array;
+}
+
+export interface ColourRasterOptions extends RasterOptions {
+  /** A built-in palette id or an inline theme. Default: 'ink' (black on white). */
+  theme?: string | SmcTheme;
+  /** Override the Crown colour only. */
+  crownColour?: string;
+  /** Override the module colour only. */
+  inkColour?: string;
+  /** Override the substrate only. */
+  paperColour?: string;
+}
+
+/**
+ * Render a themed, anti-aliased RGBA image.
+ *
+ * Same signed-distance field as {@link renderRaster}, so the geometry -- and
+ * therefore scannability -- is identical; the only difference is that each pixel
+ * is blended towards the Crown colour or the module colour depending on which ink
+ * is nearer. Edges get a true two-channel blend (paper -> ink), which is what
+ * makes a small on-screen symbol look crisp instead of stair-stepped.
+ */
+export function renderRGBA(m: SymbolModel, opt: ColourRasterOptions = {}): RgbaImage {
+  const theme = resolveTheme(opt.theme);
+  // Explicit grayscale levels still win, so existing callers that pass
+  // {dark: 0, light: 255} keep their exact colours.
+  const ink = opt.inkColour ?? (opt.dark !== undefined ? grayToHex(opt.dark) : theme.ink);
+  const paper = opt.paperColour ?? (opt.light !== undefined ? grayToHex(opt.light) : theme.paper);
+  const crownHex = opt.crownColour ?? theme.crown;
+
+  const scale = opt.scale ?? 8;
+  const shape = opt.shape ?? 'dot';
+  const quiet = opt.quiet ?? m.crown.quietZone;
+  const ss = Math.max(1, Math.round(opt.supersample ?? (scale < 5 ? 4 : scale < 8 ? 2 : 1)));
+  const gap = opt.cellGap ?? (shape === 'dot' ? 1 : 0.94);
+  const rot = ((opt.rotateDeg ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(-rot);
+  const sin = Math.sin(-rot);
+
+  const radius = m.outerRadius + quiet;
+  const size = Math.max(8, Math.ceil(radius * scale * 2));
+  const img: RgbaImage = { width: size, height: size, data: new Uint8Array(size * size * 4) };
+  const [pr, pg, pb] = parseHex(paper);
+  const inkRgb = parseHex(ink);
+  const crownRgb = parseHex(crownHex);
+  const cx = size / 2;
+  const cy = size / 2;
+  const px = 1 / scale;
+  const soft = px * (ss === 1 ? 1 : 1 / ss) * 0.95;
+
+  for (let py = 0; py < size; py++) {
+    for (let pxi = 0; pxi < size; pxi++) {
+      const o = (py * size + pxi) * 4;
+      img.data[o] = pr;
+      img.data[o + 1] = pg;
+      img.data[o + 2] = pb;
+      img.data[o + 3] = 255;
+
+      let inkAcc = 0;
+      let crownAcc = 0;
+      for (let sy = 0; sy < ss; sy++) {
+        for (let sx = 0; sx < ss; sx++) {
+          const ox = ss === 1 ? 0.5 : (sx + 0.5) / ss;
+          const oy = ss === 1 ? 0.5 : (sy + 0.5) / ss;
+          const ix = (pxi + ox - cx) * px;
+          const iy = (cy - (py + oy)) * px;
+          const x = ix * cos - iy * sin;
+          const y = ix * sin + iy * cos;
+          const dc = crownDistance(m, x, y);
+          const df = fieldDistance(m, x, y, shape, gap);
+          const near = dc <= df ? dc : df;
+          const cov = 0.5 - near / soft;
+          if (cov <= 0) continue;
+          const c = cov >= 1 ? 1 : cov;
+          if (dc <= df) crownAcc += c;
+          else inkAcc += c;
+        }
+      }
+      const n = ss * ss;
+      if (crownAcc > 0) blend(img.data, o, crownRgb, crownAcc / n);
+      if (inkAcc > 0) blend(img.data, o, inkRgb, inkAcc / n);
+    }
+  }
+  return img;
+}
+
+function blend(dst: Uint8Array, o: number, rgb: [number, number, number], t: number): void {
+  dst[o] = Math.round(dst[o]! + (rgb[0] - dst[o]!) * t);
+  dst[o + 1] = Math.round(dst[o + 1]! + (rgb[1] - dst[o + 1]!) * t);
+  dst[o + 2] = Math.round(dst[o + 2]! + (rgb[2] - dst[o + 2]!) * t);
+}
+
+function grayToHex(v: number): string {
+  const h = Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  return `#${h}${h}${h}`;
 }
 
 /** Crop/resize helper used by the test harness: nearest-neighbour downscale. */
