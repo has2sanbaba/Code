@@ -11,10 +11,18 @@ android {
 
     defaultConfig {
         applicationId = "code.simurgh.scanner"
-        minSdk = 24
+        // Android 6.0 (2015) through the newest release. 23 is the floor set
+        // by quickjs-kt's own AAR metadata (CameraX needs 21, Material 21) --
+        // the manifest merger rejects anything lower, and CI proves 23 builds.
+        minSdk = 23
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.2.0"
+        versionCode = 3
+        versionName = "1.3.0"
+
+        // No abiFilters: the debug APK stays universal and carries the engine's
+        // native library for every phone CPU architecture -- armeabi-v7a
+        // (32-bit ARM), arm64-v8a (64-bit ARM), x86 and x86_64. A CI step
+        // unzips the built APK and fails if any of the four is missing.
     }
 
     buildTypes {

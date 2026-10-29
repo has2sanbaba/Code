@@ -107,6 +107,43 @@ There is deliberately **no Gradle wrapper** in the repo (the authoring sandbox c
 not reach services.gradle.org); CI pins Gradle 9.7.1 through
 `gradle/actions/setup-gradle`. Android Studio opens the project directly.
 
+## سازگاری و دانلود · Compatibility & download
+
+**یک APK برای همه‌چیز.** بستهٔ debug یک APK جهان‌شمول (universal) است که کتابخانهٔ
+بومی QuickJS را برای **هر چهار معماری پردازندهٔ گوشی** همراه دارد:
+`armeabi-v7a` (ARM ۳۲بیتی)، `arm64-v8a` (ARM ۶۴بیتی)، `x86` و `x86_64`. هیچ
+`abiFilters`ی تنظیم نشده و یک گام CI داخل APK را با `unzip` می‌کاود و اگر هر چهار
+معماری حاضر نباشند، بیلد را **قرمز** می‌کند.
+
+**از اندروید ۶ تا آخرین نسخه.** `minSdk = 23` (اندروید ۶٫۰ Marshmallow، ۲۰۱۵) تا
+`targetSdk = 36`. پوشش: بیش از یک دهه دستگاه. این کفِ ممکن است — متادیتای AAR
+کتابخانهٔ quickjs-kt به ۲۳ نیاز دارد (CameraX به ۲۱، Material به ۲۱) و
+manifest-merger هر عدد پایین‌تر را رد می‌کند؛ بنابراین «قدیمی‌تر از اندروید ۶» با
+این موتور شدنی نیست و صادقانه گفته می‌شود.
+
+**در Releases.** هر بیلد روی شاخهٔ `main` به‌طور خودکار در **GitHub Releases**
+منتشر می‌شود: یک ریلیز نسخه‌دار `v<version>-android` و یک ریلیز چرخان `latest`
+(همیشه تازه‌ترین APK). فایل‌ها: `SiMurgh-Code-<version>.apk` و
+`SiMurgh-Code-latest.apk` — بدون نیاز به ورود به صفحهٔ Actions قابل دانلودند.
+
+**One APK for everything.** The debug build is a *universal* APK carrying the
+QuickJS native library for **all four phone CPU architectures**: `armeabi-v7a`
+(32-bit ARM), `arm64-v8a` (64-bit ARM), `x86` and `x86_64`. No `abiFilters` is
+set, and a CI step unzips the built APK and **fails the build** unless all four
+are present.
+
+**Android 6 through the newest release.** `minSdk = 23` (Android 6.0 Marshmallow,
+2015) up to `targetSdk = 36` — more than a decade of devices. This is the lowest
+achievable floor: the quickjs-kt AAR metadata requires 23 (CameraX needs 21,
+Material 21), and the manifest merger rejects anything lower, so "older than
+Android 6" is not possible with this engine and is stated plainly rather than
+papered over.
+
+**In Releases.** Every build on the `main` branch is published to **GitHub
+Releases** automatically: a versioned `v<version>-android` release and a rolling
+`latest` release (always the newest APK). Assets `SiMurgh-Code-<version>.apk` and
+`SiMurgh-Code-latest.apk` are downloadable without signing in to the Actions page.
+
 ## آزمون‌ها · Tests
 
 `EngineVectorsTest` (JVM، بدون دستگاه) همان `engine.js` ارسالی را در QuickJS اجرا
