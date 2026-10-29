@@ -5211,15 +5211,20 @@
       }
     };
   }
+  var B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  var B64_DECODE = new Int32Array(128).fill(-1);
+  for (let i = 0; i < 64; i++) B64_DECODE[B64_ALPHABET.charCodeAt(i)] = i;
+  var B64_CODES = new Uint16Array(64);
+  for (let i = 0; i < 64; i++) B64_CODES[i] = B64_ALPHABET.charCodeAt(i);
   function b64ToBytes(b64) {
-    const AL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    const clean = b64.replace(/[^A-Za-z0-9+/]/g, "");
-    const out = new Uint8Array(Math.floor(clean.length * 3 / 4));
+    const n = b64.length;
+    const out = new Uint8Array(((n >> 2) + 1) * 3);
     let o = 0;
     let buf = 0;
     let bits = 0;
-    for (const ch of clean) {
-      const v = AL.indexOf(ch);
+    for (let i = 0; i < n; i++) {
+      const c = b64.charCodeAt(i);
+      const v = c < 128 ? B64_DECODE[c] : -1;
       if (v < 0) continue;
       buf = buf << 6 | v;
       bits += 6;
@@ -5231,17 +5236,22 @@
     return out.subarray(0, o);
   }
   function bytesToB64(bytes) {
-    const AL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let out = "";
-    for (let i = 0; i < bytes.length; i += 3) {
+    const n = bytes.length;
+    const parts = [];
+    for (let i = 0; i < n; i += 3) {
       const b0 = bytes[i];
-      const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
-      const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
-      out += AL[b0 >> 2] + AL[(b0 & 3) << 4 | b1 >> 4];
-      out += i + 1 < bytes.length ? AL[(b1 & 15) << 2 | b2 >> 6] : "=";
-      out += i + 2 < bytes.length ? AL[b2 & 63] : "=";
+      const b1 = i + 1 < n ? bytes[i + 1] : 0;
+      const b2 = i + 2 < n ? bytes[i + 2] : 0;
+      parts.push(
+        String.fromCharCode(
+          B64_CODES[b0 >> 2],
+          B64_CODES[(b0 & 3) << 4 | b1 >> 4],
+          i + 1 < n ? B64_CODES[(b1 & 15) << 2 | b2 >> 6] : 61,
+          i + 2 < n ? B64_CODES[b2 & 63] : 61
+        )
+      );
     }
-    return out;
+    return parts.join("");
   }
   function encodeOp(req) {
     var _a, _b, _c, _d, _e, _f, _g;
@@ -5267,7 +5277,8 @@
     const rgba = renderRGBA(model, {
       theme: (_c = req.theme) != null ? _c : "ink",
       shape: (_d = req.shape) != null ? _d : "dot",
-      scale: (_e = req.scale) != null ? _e : 8
+      scale: (_e = req.scale) != null ? _e : 8,
+      ...req.quiet !== void 0 ? { quiet: req.quiet } : {}
     });
     return {
       ok: true,

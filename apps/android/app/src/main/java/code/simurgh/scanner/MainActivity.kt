@@ -3,16 +3,22 @@ package code.simurgh.scanner
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.os.LocaleListCompat
 import androidx.core.view.isVisible
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
  * Single native activity, two panels: create and scan. Deliberately no
@@ -50,12 +56,50 @@ class MainActivity : AppCompatActivity() {
         }
         // XML starts on the create tab; make the controllers agree.
         showTab(create = true)
+
+        // Pre-load the symbology VM off the main thread so the first generate or
+        // scan does not pay the cold-start cost (reading + evaluating ~184 KiB of
+        // interpreter bytecode). Engine calls serialize on a mutex, so this can
+        // never race a user action.
+        scope.launch(Dispatchers.Default) { Engine.warmup(this@MainActivity) }
     }
 
     private fun showTab(create: Boolean) {
         findViewById<View>(R.id.view_create).isVisible = create
         findViewById<View>(R.id.view_scan).isVisible = !create
         if (create) scanController.onHide() else scanController.onShow()
+    }
+
+    /* ------------------------------------------------------- language toggle */
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.toolbar_menu, menu)
+        return true
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        // Label the control with the language it switches *to*.
+        menu.findItem(R.id.action_language)?.title =
+            if (isPersian()) getString(R.string.lang_switch_to_en) else getString(R.string.lang_switch_to_fa)
+        return super.onPrepareOptionsMenu(menu)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean =
+        when (item.itemId) {
+            R.id.action_language -> {
+                val target = if (isPersian()) "en" else "fa"
+                // Recreates the activity (and, on API 33+, registers the per-app
+                // language). The choice persists via AppCompatLocalesService.
+                AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(target))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+
+    private fun isPersian(): Boolean {
+        val locales = AppCompatDelegate.getApplicationLocales()
+        val tag = if (locales.isEmpty()) Locale.getDefault().language else locales.toLanguageTags()
+        return tag.startsWith("fa")
     }
 
     override fun onDestroy() {

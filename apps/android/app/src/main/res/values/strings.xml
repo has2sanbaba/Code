@@ -64,4 +64,19 @@
     <string name="copy">کپی</string>
     <string name="copied">کپی شد</string>
     <string name="resume_scan">اسکن دوباره</string>
+
+    <!-- v1.4.0: gallery scan, live status, fast self-test, language toggle -->
+    <string name="gallery">گالری</string>
+    <string name="scan_working">در حال خواندن تصویر…</string>
+    <string name="scan_status">در حال اسکن… آخرین تلاش: %1$d ms · دندان %2$s</string>
+    <string name="gallery_failed">نمادی در این تصویر پیدا نشد</string>
+    <string name="verify">خودآزمایی تصویری</string>
+    <string name="busy_verify">خودآزمایی تصویری در حال اجرا…</string>
+    <string name="selftest_bits_ok">خودآزمایی موفق: کدواژه‌ها سالم بازخوانی شدند (%1$d ms)</string>
+    <string name="selftest_sealed_ok">ساختار نماد تأیید شد (%1$d ms) — محتوا قفل است و هنگام اسکن با کلید باز می‌شود.</string>
+    <string name="verify_ok">بازخوانی تصویری موفق: نماد از روی تصویر خوانده شد (%1$d ms)</string>
+    <string name="verify_unlocked">بازخوانی تصویری: با کلید باز شد (%1$d ms) ✓</string>
+    <string name="verify_locked">بازخوانی تصویری: ساختار خوانده شد اما کلید محتوا را باز نکرد (%1$d ms)</string>
+    <string name="lang_switch_to_en">English</string>
+    <string name="lang_switch_to_fa">فارسی</string>
 </resources>

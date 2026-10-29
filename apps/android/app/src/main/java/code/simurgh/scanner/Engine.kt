@@ -62,6 +62,35 @@ object Engine {
     }
 
     /**
+     * Bit-level decode (codewords in, text out) with no imaging ladder. The
+     * create panel uses this for its post-encode self-test: it proves the
+     * Reed-Solomon blocks, Golay crown, CRC and segments all read back without
+     * paying for a full render -> locate -> orient -> sample pass. For a sealed
+     * symbol, call it with no key to verify structure only (a keyed verify would
+     * re-run the full PBKDF2 derivation).
+     */
+    suspend fun decodeBits(
+        context: Context,
+        dataBitsHex: String,
+        beadsHex: String,
+        secureJson: String? = null,
+    ): JSONObject {
+        val runtime = init(context)
+        return mutex.withLock { decodeBitsRaw(runtime, dataBitsHex, beadsHex, secureJson) }
+    }
+
+    /**
+     * Pre-loads the bundle into a VM and runs one trivial op, so the first real
+     * user action (generate or scan) does not pay the cold-start cost of reading
+     * assets/engine.js and evaluating ~184 KiB of interpreter bytecode. Called
+     * once from MainActivity.onCreate on a background dispatcher.
+     */
+    suspend fun warmup(context: Context) {
+        val runtime = init(context)
+        mutex.withLock { callRaw(runtime, JSONObject().put("op", "spec")) }
+    }
+
+    /**
      * The bridge itself, against an already-loaded runtime. Split out so JVM
      * unit tests exercise the exact escaping/parsing path the app uses, with no
      * Android classes involved.

@@ -2,13 +2,18 @@ package code.simurgh.scanner
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.net.Uri
 import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
@@ -28,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -59,9 +65,19 @@ class ScanController(
     private val unlockButton = root.findViewById<MaterialButton>(R.id.unlock_button)
     private val copyButton = root.findViewById<MaterialButton>(R.id.copy_button)
     private val closeButton = root.findViewById<MaterialButton>(R.id.close_result)
+    private val galleryButton = root.findViewById<MaterialButton>(R.id.gallery_button)
 
     private val analyzerExecutor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
+
+    // Photo picker for "scan from gallery". Registered during onCreate (before
+    // STARTED), needs no permission, and falls back to the system document
+    // picker on old devices. A still photo is the reliable path: one sharp,
+    // full-profile decode instead of a stream of motion-blurred frames.
+    private val pickImage =
+        activity.registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) onGalleryImage(uri)
+        }
 
     @Volatile
     private var paused = true
@@ -86,6 +102,29 @@ class ScanController(
             Snackbar.make(previewView, R.string.copied, Snackbar.LENGTH_SHORT).show()
         }
         unlockButton.setOnClickListener { onUnlock() }
+        galleryButton.setOnClickListener {
+            pickImage.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+            )
+        }
+        // Tap-to-focus: the decoder needs a sharp frame, and in the real world
+        // the biggest miss is defocus during the (interpreter-bound) decode.
+        // Tap anywhere to drive autofocus to that point.
+        previewView.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_UP) {
+                val c = camera
+                if (c != null) {
+                    val point = previewView.meteringPointFactory.createPoint(ev.x, ev.y)
+                    val action =
+                        FocusMeteringAction
+                            .Builder(point, FocusMeteringAction.FLAG_AF)
+                            .setAutoCancelDuration(3, TimeUnit.SECONDS)
+                            .build()
+                    c.cameraControl.startFocusAndMetering(action)
+                }
+            }
+            false
+        }
     }
 
     fun onShow() {
@@ -172,11 +211,69 @@ class ScanController(
                 req.put("height", gray.height)
                 req.put("fast", true)
                 val resp = withContext(Dispatchers.Default) { Engine.call(activity, req) }
-                if (resp.optBoolean("ok")) present(resp, gray)
+                if (resp.optBoolean("ok")) {
+                    present(resp, gray)
+                } else if (!paused) {
+                    // Live feedback so the panel never looks frozen: show how long
+                    // the attempt took and how many Angle-Track teeth locked. On
+                    // the interpreter a frame costs seconds, so this honesty about
+                    // "still working" matters more than on a native decoder.
+                    val teeth = resp.optJSONObject("diag")?.optString("teeth") ?: "-"
+                    hint.text = activity.getString(R.string.scan_status, resp.optInt("ms"), teeth)
+                }
             } catch (_: Exception) {
                 // Keep scanning through transient engine errors.
             } finally {
                 busy.set(false)
+            }
+        }
+    }
+
+    /**
+     * Decode a still image chosen from the gallery / photo picker. This is the
+     * reliable recognition path: one sharp image, full imaging profile (polarity
+     * retry + wider version window), no motion blur -- versus the camera stream
+     * where each interpreter-bound frame costs seconds and can arrive blurred.
+     */
+    private fun onGalleryImage(uri: Uri) {
+        paused = true // stop the camera analyzer while we read the still
+        busy.set(true)
+        permissionBox.isVisible = false // let status show even without camera permission
+        resultCard.isVisible = false
+        hint.isVisible = true
+        hint.setText(R.string.scan_working)
+        scope.launch {
+            var ok = false
+            try {
+                val gray =
+                    withContext(Dispatchers.IO) { Bitmaps.toGrayFromUri(activity, uri, 1024) }
+                if (gray == null) {
+                    Snackbar.make(previewView, R.string.gallery_failed, Snackbar.LENGTH_LONG).show()
+                } else {
+                    val req = JSONObject()
+                    req.put("op", "decode")
+                    req.put("grayB64", gray.toBase64())
+                    req.put("width", gray.width)
+                    req.put("height", gray.height)
+                    val resp = withContext(Dispatchers.Default) { Engine.call(activity, req) }
+                    if (resp.optBoolean("ok")) {
+                        present(resp, gray)
+                        ok = true
+                    } else {
+                        Snackbar.make(previewView, R.string.gallery_failed, Snackbar.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Snackbar
+                    .make(previewView, e.message ?: e.javaClass.simpleName, Snackbar.LENGTH_LONG)
+                    .show()
+            } finally {
+                busy.set(false)
+                if (!ok) {
+                    hint.setText(R.string.scan_hint)
+                    paused = false
+                    if (!activity.hasCameraPermission()) permissionBox.isVisible = true
+                }
             }
         }
     }

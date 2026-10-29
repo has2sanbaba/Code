@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Per-app language declaration (Android 13+ system settings) and the locale set
+  AppCompat backports to older releases. fa is listed first because Persian is
+  the app's default/primary language; en is the second supported locale.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="fa" />
+    <locale android:name="en" />
+</locale-config>

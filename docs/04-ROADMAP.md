@@ -34,7 +34,7 @@ tools/           derive-angle-track.mjs -- regenerates and verifies the m-sequen
 | `imaging.test.ts` | 30 | rasteriser geometry and ink, SVG/ASCII output, locator accuracy, image decode under rotation, perspective, blur, noise, occlusion, fading, resampling, all three module shapes, RGBA input, rotation recovery, rejection of non-symbols, the ECC damage ladder, the mask-prior detector |
 | `secure.test.ts` + `visual.test.ts` | 29 + 16 | RFC 8439 vectors (cipher, Poly1305, AEAD tag), differential equality with `node:crypto` and WebCrypto PBKDF2, tamper/AAD/nonce rejection, keyring and context binding, envelope wire cost, sealed round trips through images; palette contrast arithmetic, colour rendering, polarity normalisation and its retry |
 
-The Android app adds **eight JVM tests** (`apps/android/app/src/test`) that run in CI:
+The Android app adds **nine JVM tests** (`apps/android/app/src/test`) that run in CI:
 they execute the *shipped* `assets/engine.js` inside a real QuickJS runtime and
 compare it bit for bit against vectors generated from the TypeScript core — encode
 exactness, sealed-envelope reproduction, full image decode, and the JNI string
@@ -108,6 +108,20 @@ These are documented, measured and deliberately not papered over.
    behaviour — camera framing, touch, PBKDF2 wall time inside QuickJS, install on a
    real 32-bit handset — is reasoned about and differentially tested, but has not
    been observed on hardware by the author.
+9. **The interpreter is the camera-speed ceiling; a native port is the only path
+   to QR-class reads.** Measured on the reference host (v1.4 work): a clean decode
+   is 330–470 ms under Node's JIT and is *flat versus resolution* (256 px ≈ 357 ms,
+   1024 px ≈ 465 ms), because the locate→orient→sample ladder is fixed-cost math,
+   not per-pixel work — so shrinking or cropping frames does not help. QuickJS has
+   no JIT and runs numeric/string code roughly 20–100× slower than V8, so the same
+   ladder costs seconds per frame on a handset. v1.4.0 removed the *avoidable*
+   overhead (linear-time base64 instead of O(64·n) `indexOf` / O(n²) `+=`, a
+   bit-level self-test instead of a second full imaging decode, a smaller default
+   raster, VM warm-up) and added the reliable gallery path, but it cannot make an
+   interpreter fast. Hitting "a fraction of a second, like QR" requires porting the
+   decode ladder to native Kotlin/C++; the CI differential harness (JVM tests run
+   the shipped bundle against TS-generated vectors) is exactly what makes such a
+   port verifiable blind, so it is the headline candidate for 1.5.
 
 ## 3. Near term (1.2)
 
@@ -141,6 +155,11 @@ Ordered by value per unit of work.
 
 ## 4. Medium term (1.3 – 1.x)
 
+* **Native decode port (the real path to QR-class camera speed).** Port the
+  locate→orient→sample→decode ladder from TypeScript to Kotlin (or C++ via the
+  NDK), verified bit for bit by the existing CI differential harness. Only a
+  native decode reaches the sub-100 ms per-frame target that QR scanners enjoy;
+  the QuickJS bridge stays as the reference oracle and fallback.
 * **Activate MAC/SIGNATURE policy.** Algorithm ids, Ed25519 via WebCrypto, and the
   reader policy document: refuse, warn, or report.
 * **Multi-level ink channels.** The lattice supports two or three distinguishable

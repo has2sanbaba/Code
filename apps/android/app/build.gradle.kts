@@ -16,8 +16,8 @@ android {
         // the manifest merger rejects anything lower, and CI proves 23 builds.
         minSdk = 23
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.3.0"
+        versionCode = 4
+        versionName = "1.4.0"
 
         // No abiFilters: the debug APK stays universal and carries the engine's
         // native library for every phone CPU architecture -- armeabi-v7a

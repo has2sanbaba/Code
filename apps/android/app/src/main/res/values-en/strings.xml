@@ -64,4 +64,19 @@
     <string name="copy">Copy</string>
     <string name="copied">Copied</string>
     <string name="resume_scan">Scan again</string>
+
+    <!-- v1.4.0: gallery scan, live status, fast self-test, language toggle -->
+    <string name="gallery">Gallery</string>
+    <string name="scan_working">Reading image…</string>
+    <string name="scan_status">Scanning… last attempt: %1$d ms · teeth %2$s</string>
+    <string name="gallery_failed">No symbol found in that image</string>
+    <string name="verify">Verify by image</string>
+    <string name="busy_verify">Verifying by image…</string>
+    <string name="selftest_bits_ok">Self-test passed: codewords read back intact (%1$d ms)</string>
+    <string name="selftest_sealed_ok">Symbol structure verified (%1$d ms) — content stays sealed and unlocks with the key when scanned.</string>
+    <string name="verify_ok">Image verify passed: symbol read back from the raster (%1$d ms)</string>
+    <string name="verify_unlocked">Image verify: opened with the key (%1$d ms) ✓</string>
+    <string name="verify_locked">Image verify: structure read but the key did not open the content (%1$d ms)</string>
+    <string name="lang_switch_to_en">English</string>
+    <string name="lang_switch_to_fa">فارسی</string>
 </resources>
