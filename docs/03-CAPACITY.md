@@ -1,6 +1,6 @@
 # SiMurgh Code — Capacity and Sizing
 
-**Companion to the Specification 1.0.0.**
+**Companion to the Specification 1.1.0.**
 
 > **چکیدهٔ فارسی** — جدول ظرفیت هر ۴۰ نسخه در چهار سطح تصحیح خطا، به بایتِ *مفید*
 > (چهار کدواژهٔ CRC-32 کسر شده‌اند)، همراه با قطر چاپ بر حسب ماژول. سپس اندازهٔ

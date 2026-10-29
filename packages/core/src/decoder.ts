@@ -32,7 +32,16 @@ import {
   type FormatBits,
 } from './geometry.js';
 import { rsDecode } from './reed-solomon.js';
-import { decodePayloadBytes, payloadToText, type Payload, type Segment } from './segments.js';
+import {
+  decodePayloadBytes,
+  payloadToText,
+  unwrapSecure,
+  type Payload,
+  type SecureDecodeOptions,
+  type SecureSegment,
+  type Segment,
+} from './segments.js';
+import { hexEncode } from './sha256.js';
 
 export interface DecodeInput {
   /** Printed value (0/1) of every data cell, in lattice order, length N. */
@@ -67,6 +76,26 @@ export interface DecodeOptions {
   maxCandidates?: number;
   /** Called with progress information during a brute-force search. */
   onCandidate?: (c: FormatCandidate) => void;
+  /**
+   * Keys for opening SECURE envelopes. Omit to read a symbol's structure
+   * without its contents: the decode still succeeds, reports `encrypted: true`
+   * and yields the ciphertext metadata (key id, KDF cost, size) and nothing more.
+   */
+  secure?: SecureDecodeOptions;
+}
+
+/** What a reader can learn from an encrypted envelope without the key. */
+export interface SecureEnvelopeInfo {
+  /** 0 = PBKDF2 passphrase, 1 = raw 32-byte key. */
+  suite: number;
+  /** Hex key identifier printed in the envelope (empty string when absent). */
+  keyId: string;
+  /** PBKDF2 iteration count (0 for the raw-key suite). */
+  iterations: number;
+  /** Hex salt (empty for the raw-key suite). */
+  salt: string;
+  /** Ciphertext length excluding the 16-byte tag, i.e. the plaintext length. */
+  plaintextBytes: number;
 }
 
 export interface DecodeStats {
@@ -106,6 +135,49 @@ export interface DecodeResult {
   /** Raw payload bytes (after inflation, before segment parsing). */
   bytes?: Uint8Array;
   stats?: DecodeStats;
+  /** The payload contains at least one SECURE envelope. */
+  encrypted?: boolean;
+  /** An envelope was opened with a supplied key and its segments are inlined. */
+  secureUnlocked?: boolean;
+  /** Metadata of the first envelope, readable without any key. */
+  secureInfo?: SecureEnvelopeInfo;
+}
+
+/** Describe an envelope using only what is printed in the symbol. */
+export function describeSecure(seg: SecureSegment): SecureEnvelopeInfo {
+  return {
+    suite: seg.suite,
+    keyId: hexEncode(seg.keyId),
+    iterations: seg.iterations,
+    salt: hexEncode(seg.salt),
+    plaintextBytes: Math.max(0, seg.ciphertext.length - 16),
+  };
+}
+
+/**
+ * Replace every SECURE envelope that a supplied key opens with its plaintext
+ * segments. Envelopes that stay closed are left in place -- they remain part of
+ * the payload, still unreadable, exactly as they were printed.
+ */
+function openEnvelopes(payload: Payload, opt?: SecureDecodeOptions): { payload: Payload; unlocked: boolean } {
+  let sawEnvelope = false;
+  let unlocked = false;
+  const out: Segment[] = [];
+  for (const seg of payload.segments) {
+    if (seg.kind !== 'secure') {
+      out.push(seg);
+      continue;
+    }
+    sawEnvelope = true;
+    const inner = opt ? unwrapSecure(seg, opt) : null;
+    if (inner) {
+      out.push(...inner);
+      unlocked = true;
+    } else {
+      out.push(seg);
+    }
+  }
+  return sawEnvelope ? { payload: { segments: out }, unlocked } : { payload, unlocked };
 }
 
 /**
@@ -383,6 +455,10 @@ export function decodeWithFormat(input: DecodeInput, format: FormatBits, opt: De
     return { ok: false, error: `segment parse failed: ${(e as Error).message}`, version, ecc, mask: format.mask, compression: format.compression, format, stats, bytes: core };
   }
 
+  const firstEnvelope = payload.segments.find((s): s is SecureSegment => s.kind === 'secure');
+  const opened = openEnvelopes(payload, opt.secure);
+  payload = opened.payload;
+
   return {
     ok: true,
     version,
@@ -395,6 +471,9 @@ export function decodeWithFormat(input: DecodeInput, format: FormatBits, opt: De
     text: payloadToText(payload),
     bytes: core,
     stats,
+    ...(firstEnvelope
+      ? { encrypted: true, secureUnlocked: opened.unlocked, secureInfo: describeSecure(firstEnvelope) }
+      : {}),
   };
 }
 

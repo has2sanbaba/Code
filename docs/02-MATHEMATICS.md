@@ -1,6 +1,6 @@
 # SiMurgh Code — Mathematical Foundations
 
-**Companion to the Specification 1.0.0. Derivations, proofs and measured constants.**
+**Companion to the Specification 1.1.0. Derivations, proofs and measured constants.**
 
 > **چکیدهٔ فارسی** — این سند ریاضیاتِ پشتِ سیمرغ کد را می‌آورد: چرا شبکهٔ مثلثی
 > (چگالی بسته‌بندی `π/(2√3) ≈ 0.907` در برابر `π/4 ≈ 0.785`)، چرا دنبالهٔ m با

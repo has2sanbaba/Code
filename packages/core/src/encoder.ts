@@ -42,7 +42,10 @@ import {
   encodePayloadBytes,
   segmentBits,
   segmentsToBytes,
+  wrapSecure,
   type GeoFix,
+  type SecureEncodeOptions,
+  type SecureSegment,
   type Segment,
 } from './segments.js';
 
@@ -71,6 +74,14 @@ export interface EncodeOptions {
   signature?: { algo: number; value: Uint8Array };
   /** Convenience: append a VENDOR segment. */
   vendor?: { id: number; value: Uint8Array };
+  /**
+   * Encrypt the payload inside a SECURE envelope (AEAD_CHACHA20_POLY1305).
+   *
+   * Pass a passphrase (a salt and PBKDF2 cost are generated and printed in the
+   * symbol) or a 32-byte key. A FRAME header, if any, stays in the clear so
+   * multi-code streams can still be reassembled; everything else is sealed.
+   */
+  secure?: SecureEncodeOptions;
   /** Try to compress the payload (raw DEFLATE). Default: true. */
   compression?: boolean;
   /** Pluggable compressor. Defaults to the built-in raw DEFLATE encoder. */
@@ -106,6 +117,8 @@ export interface EncodedSymbol {
   maskScores: number[];
   /** Dark module ratio of the data field. */
   inkCoverage: number;
+  /** The SECURE envelope, when the payload was encrypted. */
+  secure?: SecureSegment;
 }
 
 /** Build the segment list from the convenience options. */
@@ -149,7 +162,24 @@ export const MIN_COMPRESS_BYTES = 24;
 
 export function encode(opt: EncodeOptions = {}): EncodedSymbol {
   const ecc = opt.ecc ?? 'M';
-  const segments = buildSegments(opt);
+  let segments = buildSegments(opt);
+
+  /*
+   * Encryption is the outermost transform of the payload and the innermost of
+   * the format: a FRAME header stays readable (a receiver must know how many
+   * discs to expect before it can decrypt anything), and the rest is sealed in
+   * one envelope with a fresh random nonce. Ciphertext is incompressible, so
+   * the compression step moves *inside* the envelope -- see wrapSecure -- and
+   * the symbol's own compression bit stays 0. That also keeps the property that
+   * matters: what a scanner without the key sees is one opaque segment.
+   */
+  let secure: SecureSegment | undefined;
+  if (opt.secure) {
+    const clear = segments.filter((x) => x.kind === 'frame');
+    const sealed = segments.filter((x) => x.kind !== 'frame');
+    secure = wrapSecure(sealed, opt.secure);
+    segments = [...clear, secure];
+  }
   const core = segmentsToCoreBytes(segments);
 
   /*
@@ -161,7 +191,7 @@ export function encode(opt: EncodeOptions = {}): EncodedSymbol {
    * floor is where a DEFLATE block header stops paying for itself.
    */
   const compress = opt.compress ?? ((raw: Uint8Array) => deflateRaw(raw));
-  const useCompression = opt.compression !== false && core.length >= MIN_COMPRESS_BYTES;
+  const useCompression = !secure && opt.compression !== false && core.length >= MIN_COMPRESS_BYTES;
   let compressed: Uint8Array | null = null;
   if (useCompression) {
     const c = compress(core);
@@ -296,6 +326,7 @@ export function encode(opt: EncodeOptions = {}): EncodedSymbol {
     beads,
     maskScores,
     inkCoverage: dark / N,
+    ...(secure ? { secure } : {}),
   };
 }
 

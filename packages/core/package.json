@@ -1,6 +1,6 @@
 {
   "name": "@simurgh/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Zero-dependency encoder/decoder for the SiMurgh Code (SMC) symbology.",
   "license": "MIT",
   "type": "module",
@@ -8,11 +8,24 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "default": "./dist/index.js" },
-    "./render": { "types": "./dist/render/index.d.ts", "import": "./dist/render/index.js" },
-    "./imaging": { "types": "./dist/imaging/index.d.ts", "import": "./dist/imaging/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./render": {
+      "types": "./dist/render/index.d.ts",
+      "import": "./dist/render/index.js"
+    },
+    "./imaging": {
+      "types": "./dist/imaging/index.d.ts",
+      "import": "./dist/imaging/index.js"
+    }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo"

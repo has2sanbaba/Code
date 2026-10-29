@@ -22,6 +22,9 @@
  *   7  FRAME        multi-code stream header (payload bigger than one disc)
  *   8  MAC          keyed anti-counterfeit tag (HMAC-SHA256 truncated, ...)
  *   9  SIGNATURE    detached signature (Ed25519 / ECDSA / anything)
+ *  10  SECURE       an encrypted envelope (AEAD_CHACHA20_POLY1305, RFC 8439)
+ *                  that wraps any other segment list -- readable only with
+ *                  the key, and provably not reconstructable without it
  *  15  VENDOR       application-defined extension
  *
  * DENSITY (bits per character, no segment overhead)
@@ -35,7 +38,19 @@
  * between NUMERIC / C64 / TEXT, so mixed content is automatically compacted.
  */
 import { BitReader, BitWriter } from './bits.js';
-import { utf8Decode, utf8Encode } from './sha256.js';
+import { deflateIfSmaller, inflateRaw } from './deflate.js';
+import { hexEncode, hmacSha256, utf8Decode, utf8Encode } from './sha256.js';
+import {
+  AEAD_KEY_BYTES,
+  AEAD_NONCE_BYTES,
+  AEAD_TAG_BYTES,
+  PBKDF2_ITERATIONS,
+  aeadDecrypt,
+  aeadEncrypt,
+  deriveKey,
+  randomNonce,
+  randomSalt,
+} from './chacha20.js';
 
 export const MODE_TERMINATOR = 0;
 export const MODE_NUMERIC = 1;
@@ -47,6 +62,7 @@ export const MODE_GEO = 6;
 export const MODE_FRAME = 7;
 export const MODE_MAC = 8;
 export const MODE_SIGNATURE = 9;
+export const MODE_SECURE = 10;
 export const MODE_VENDOR = 15;
 
 export const MODE_NAMES: Record<number, string> = {
@@ -60,7 +76,7 @@ export const MODE_NAMES: Record<number, string> = {
   7: 'FRAME',
   8: 'MAC',
   9: 'SIGNATURE',
-  10: 'RESERVED',
+  10: 'SECURE',
   15: 'VENDOR',
 };
 
@@ -121,7 +137,29 @@ export type Segment =
   | { kind: 'frame'; streamId: number; index: number; count: number }
   | { kind: 'mac'; algo: number; value: Uint8Array }
   | { kind: 'signature'; algo: number; value: Uint8Array }
-  | { kind: 'vendor'; id: number; value: Uint8Array };
+  | { kind: 'vendor'; id: number; value: Uint8Array }
+  /**
+   * An encrypted envelope. Everything inside it is opaque to a reader that does
+   * not hold the key: the modules still decode (the Reed-Solomon and CRC layers
+   * work on ciphertext exactly as they do on plaintext), but the payload cannot
+   * be recovered, completed or guessed from a photograph of the symbol.
+   */
+  | {
+      kind: 'secure';
+      /** 0 = PBKDF2-HMAC-SHA256 passphrase, 1 = raw 32-byte key. */
+      suite: number;
+      /**
+       * Bit 0: the plaintext is a raw DEFLATE stream (compress-then-encrypt --
+       * the only order that works, since ciphertext is incompressible).
+       */
+      flags: number;
+      salt: Uint8Array;
+      iterations: number;
+      keyId: Uint8Array;
+      nonce: Uint8Array;
+      /** Ciphertext with the 16-byte Poly1305 tag appended. */
+      ciphertext: Uint8Array;
+    };
 
 export interface Payload {
   segments: Segment[];
@@ -198,6 +236,10 @@ export function segmentBits(seg: Segment): number {
       return 4 + 4 + 12 + 8 * seg.value.length;
     case 'vendor':
       return 4 + 16 + 16 + 8 * seg.value.length;
+    case 'secure':
+      return (
+        4 + 4 + 4 + 8 + 8 * seg.salt.length + 32 + 4 + 8 * seg.keyId.length + 96 + 16 + 8 * seg.ciphertext.length
+      );
   }
 }
 
@@ -311,6 +353,24 @@ export function writeSegment(w: BitWriter, seg: Segment): void {
       w.writeBits(seg.id & 0xffff, 16);
       w.writeBits(seg.value.length, 16);
       w.writeBytes(seg.value);
+      return;
+    }
+    case 'secure': {
+      if (seg.salt.length > 255) throw new RangeError('SECURE salt too long');
+      if (seg.keyId.length > 15) throw new RangeError('SECURE keyId too long (max 15 bytes)');
+      if (seg.nonce.length !== AEAD_NONCE_BYTES) throw new RangeError('SECURE nonce must be 12 bytes');
+      if (seg.ciphertext.length > 0xffff) throw new RangeError('SECURE payload too long');
+      w.writeBits(MODE_SECURE, 4);
+      w.writeBits(seg.suite & 0xf, 4);
+      w.writeBits(seg.flags & 0xf, 4);
+      w.writeBits(seg.salt.length, 8);
+      w.writeBytes(seg.salt);
+      w.writeBits(seg.iterations >>> 0, 32);
+      w.writeBits(seg.keyId.length, 4);
+      w.writeBytes(seg.keyId);
+      w.writeBytes(seg.nonce);
+      w.writeBits(seg.ciphertext.length, 16);
+      w.writeBytes(seg.ciphertext);
       return;
     }
   }
@@ -436,6 +496,23 @@ export function readSegments(r: BitReader, maxSegments = 4096): Segment[] {
         const count = r.readBits(16);
         if (r.remaining < count * 8) throw new SegmentDecodeError('truncated VENDOR');
         out.push({ kind: 'vendor', id, value: r.readBytes(count) });
+        break;
+      }
+      case MODE_SECURE: {
+        const suite = r.readBits(4);
+        const flags = r.readBits(4);
+        const saltLen = r.readBits(8);
+        if (r.remaining < saltLen * 8) throw new SegmentDecodeError('truncated SECURE salt');
+        const salt = r.readBytes(saltLen);
+        const iterations = r.readBits(32);
+        const keyIdLen = r.readBits(4);
+        if (r.remaining < keyIdLen * 8) throw new SegmentDecodeError('truncated SECURE key id');
+        const keyId = r.readBytes(keyIdLen);
+        if (r.remaining < 96) throw new SegmentDecodeError('truncated SECURE nonce');
+        const nonce = r.readBytes(12);
+        const ctLen = r.readBits(16);
+        if (r.remaining < ctLen * 8) throw new SegmentDecodeError('truncated SECURE ciphertext');
+        out.push({ kind: 'secure', suite, flags, salt, iterations, keyId, nonce, ciphertext: r.readBytes(ctLen) });
         break;
       }
       default:
@@ -594,6 +671,8 @@ export function payloadToText(p: Payload): string {
           return `[sig:${s.algo} ${s.value.length}B]`;
         case 'vendor':
           return `[vendor:${s.id} ${s.value.length}B]`;
+        case 'secure':
+          return `[encrypted:${s.keyId.length ? hexEncode(s.keyId) : 'no-id'} ${s.ciphertext.length - AEAD_TAG_BYTES}B]`;
       }
     })
     .join('');
@@ -606,4 +685,209 @@ export function payloadToText(p: Payload): string {
  */
 export function frameSegments(streamId: number, index: number, count: number, data: Segment[]): Segment[] {
   return [{ kind: 'frame', streamId, index, count }, ...data];
+}
+
+/* --------------------------------------------------------- secure envelope */
+
+/** Passphrase key agreement: PBKDF2-HMAC-SHA256, then ChaCha20-Poly1305. */
+export const SECURE_SUITE_PBKDF2 = 0;
+/** Direct key: a 32-byte symmetric key, then ChaCha20-Poly1305. */
+export const SECURE_SUITE_RAW = 1;
+
+/**
+ * Domain separator for the authenticated additional data. Frozen forever: the
+ * AAD must never contain anything a future reader would compute differently
+ * (no spec version, no date), or symbols printed today would stop opening.
+ */
+export const SECURE_AAD_DOMAIN = 'SMC1-SECURE';
+
+export type SecureSegment = Extract<Segment, { kind: 'secure' }>;
+
+export interface SecureEncodeOptions {
+  /** Passphrase (suite 0) or a 32-byte key (suite 1). */
+  key: string | Uint8Array;
+  /** Public key identifier, printed in the symbol. Default: derived from the key. */
+  keyId?: Uint8Array;
+  /** PBKDF2 salt. Default: 16 random bytes. Ignored by suite 1. */
+  salt?: Uint8Array;
+  /** PBKDF2 cost. Default `PBKDF2_ITERATIONS`. Stored as 0 by suite 1. */
+  iterations?: number;
+  /** 12-byte AEAD nonce. Default: random. Never reuse one under the same key. */
+  nonce?: Uint8Array;
+  /** Compress the plaintext before encrypting (raw DEFLATE, inside the envelope). Default: true. */
+  compress?: boolean;
+  /**
+   * Authenticated but *not printed*: binds the ciphertext to out-of-band data
+   * (an invoice number, a device serial, a date). A reader must supply the same
+   * string or the tag will not verify.
+   */
+  context?: string | Uint8Array;
+}
+
+export interface SecureDecodeOptions {
+  /** A single passphrase or 32-byte key. */
+  key?: string | Uint8Array;
+  /** A keyring: the reader picks by the printed key id. */
+  keys?: { keyId?: Uint8Array; key: string | Uint8Array }[];
+  /** Must match the encoder's `context`. */
+  context?: string | Uint8Array;
+}
+
+function toBytes(v: string | Uint8Array): Uint8Array {
+  return typeof v === 'string' ? utf8Encode(v) : v;
+}
+
+/** The authenticated additional data for one envelope. */
+export function secureAad(seg: SecureSegment, context?: string | Uint8Array): Uint8Array {
+  const parts: Uint8Array[] = [
+    utf8Encode(SECURE_AAD_DOMAIN),
+    Uint8Array.from([seg.suite & 0xff, seg.keyId.length & 0xff]),
+    seg.keyId,
+    seg.nonce,
+  ];
+  if (context !== undefined) parts.push(toBytes(context));
+  let total = 0;
+  for (const p of parts) total += p.length;
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) {
+    out.set(p, off);
+    off += p.length;
+  }
+  return out;
+}
+
+/**
+ * Turn the envelope's key-agreement fields into a 32-byte AEAD key.
+ *
+ * A 32-byte array is accepted for *both* suites and means "already derived":
+ * the caller ran PBKDF2 itself (node:crypto, WebCrypto -- both ~100x faster than
+ * the portable implementation) and hands over the result. That is the path a
+ * scanner app should take; the passphrase path stays available for callers that
+ * want the whole thing done for them.
+ */
+export function expandSecureKey(seg: SecureSegment, key: string | Uint8Array): Uint8Array | null {
+  if (typeof key !== 'string' && key.length === AEAD_KEY_BYTES) return key;
+  if (seg.suite === SECURE_SUITE_RAW) {
+    return null; // a raw-key envelope needs exactly 32 bytes, handled above
+  }
+  if (seg.suite === SECURE_SUITE_PBKDF2) {
+    const d = deriveKey(toBytes(key), seg.salt, Math.max(1, seg.iterations));
+    return d.key;
+  }
+  return null; // unknown suite: refuse rather than guess
+}
+
+/** Wrap a segment list into one encrypted envelope segment. */
+export const SECURE_FLAG_DEFLATE = 1;
+
+export function wrapSecure(inner: Segment[], opt: SecureEncodeOptions): SecureSegment {
+  /*
+   * Compress *before* encrypting. After encryption the bytes are indistinguishable
+   * from noise and DEFLATE cannot help; before, a paragraph of prose shrinks ~4x
+   * and the whole symbol drops several versions. The flag travels in the envelope
+   * header, so the outer format's compression bit stays 0 for encrypted payloads.
+   */
+  const plain = segmentsToBytes(inner);
+  const deflated = opt.compress !== false ? deflateIfSmaller(plain) : null;
+  const plaintext = deflated ?? plain;
+  const raw = typeof opt.key !== 'string';
+  let suite: number;
+  let salt: Uint8Array;
+  let iterations: number;
+  let key: Uint8Array;
+  let keyId: Uint8Array;
+
+  if (raw) {
+    const bytes = opt.key as Uint8Array;
+    if (bytes.length !== AEAD_KEY_BYTES) {
+      throw new RangeError(`a raw SECURE key must be exactly ${AEAD_KEY_BYTES} bytes, got ${bytes.length}`);
+    }
+    suite = SECURE_SUITE_RAW;
+    salt = new Uint8Array(0);
+    iterations = 0;
+    key = bytes;
+    keyId = opt.keyId ?? Uint8Array.from(hmacSha256(utf8Encode(SECURE_AAD_DOMAIN), key).subarray(0, 4));
+  } else {
+    suite = SECURE_SUITE_PBKDF2;
+    salt = opt.salt ?? randomSalt();
+    iterations = opt.iterations ?? PBKDF2_ITERATIONS;
+    const d = deriveKey(opt.key as string, salt, iterations);
+    key = d.key;
+    keyId = opt.keyId ?? d.keyId;
+  }
+
+  const nonce = opt.nonce ?? randomNonce();
+  if (nonce.length !== AEAD_NONCE_BYTES) throw new RangeError('SECURE nonce must be 12 bytes');
+  const seg: SecureSegment = { kind: 'secure', suite, flags: deflated ? SECURE_FLAG_DEFLATE : 0, salt, iterations, keyId, nonce, ciphertext: new Uint8Array(0) };
+  seg.ciphertext = aeadEncrypt(key, nonce, plaintext, secureAad(seg, opt.context));
+  return seg;
+}
+
+/**
+ * Open an envelope. Returns the inner segments, or null when no supplied key
+ * authenticates -- a wrong key and a tampered symbol are, by design, the same
+ * answer: nothing.
+ */
+export function unwrapSecure(seg: SecureSegment, opt: SecureDecodeOptions = {}): Segment[] | null {
+  const candidates: (string | Uint8Array)[] = [];
+  if (opt.key !== undefined) candidates.push(opt.key);
+  for (const k of opt.keys ?? []) {
+    // A keyring entry that declares an id is only tried if the id matches; an
+    // entry without one is a wildcard (useful for "there is only ever one key").
+    if (!k.keyId || k.keyId.length === 0 || sameBytes(k.keyId, seg.keyId)) candidates.push(k.key);
+  }
+  for (const candidate of candidates) {
+    const key = expandSecureKey(seg, candidate);
+    if (!key) continue;
+    const sealed = aeadDecrypt(key, seg.nonce, seg.ciphertext, secureAad(seg, opt.context));
+    if (!sealed) continue;
+    const plaintext = seg.flags & SECURE_FLAG_DEFLATE ? inflateRaw(sealed, { maxOutput: 1 << 24 }) : sealed;
+    try {
+      return readSegments(new BitReader(plaintext));
+    } catch {
+      // The tag verified but the plaintext is not a valid segment stream: the
+      // envelope was made by something else. Keep trying the remaining keys.
+      continue;
+    }
+  }
+  return null;
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * Derive a key with the platform's native PBKDF2 when it is available.
+ *
+ * The synchronous pure-TypeScript path is correct but costs ~1 s at the default
+ * 210 000 iterations, which is unacceptable in a scanner that unlocks dozens of
+ * symbols a minute. Browsers and Node 19+ both expose WebCrypto, whose PBKDF2 is
+ * native; an app should derive once, cache the 32 bytes, and hand *those* to the
+ * decoder (suite 1 accepts a raw key directly).
+ */
+export async function deriveKeyAsync(
+  passphrase: string | Uint8Array,
+  salt: Uint8Array,
+  iterations = PBKDF2_ITERATIONS,
+): Promise<Uint8Array> {
+  const subtle = (globalThis as { crypto?: Crypto }).crypto?.subtle;
+  if (!subtle) {
+    const d = deriveKey(passphrase, salt, iterations);
+    return d.key;
+  }
+  // Copy into exact-length ArrayBuffers: WebCrypto's BufferSource type does not
+  // accept a Uint8Array that might be a view over a larger or shared buffer.
+  const material = Uint8Array.from(toBytes(passphrase)).buffer as ArrayBuffer;
+  const saltBuffer = Uint8Array.from(salt).buffer as ArrayBuffer;
+  const keyMaterial = await subtle.importKey('raw', material, 'PBKDF2', false, ['deriveBits']);
+  const bits = await subtle.deriveBits(
+    { name: 'PBKDF2', salt: saltBuffer, iterations, hash: 'SHA-256' },
+    keyMaterial,
+    256,
+  );
+  return new Uint8Array(bits);
 }

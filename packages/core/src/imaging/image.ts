@@ -126,6 +126,34 @@ export function otsuThreshold(img: GrayImage): number {
 }
 
 /** 1 = ink, 0 = substrate. */
+/**
+ * Fraction of pixels at or below the Otsu split.
+ *
+ * A SiMurgh symbol printed dark-on-light and photographed with any reasonable
+ * margin puts this between roughly 0.05 and 0.45; the same symbol inverted
+ * (light ink on a dark substrate, which is what a screen shows in dark mode and
+ * what white-on-black packaging prints) lands above 0.5. That single number is
+ * enough to pick which polarity to try first -- see `detectPolarity`.
+ */
+export function darkFraction(img: GrayImage): number {
+  const t = otsuThreshold(img);
+  let dark = 0;
+  for (let i = 0; i < img.data.length; i++) if ((img.data[i] as number) <= t) dark++;
+  return dark / Math.max(1, img.data.length);
+}
+
+/** A copy of the image with its polarity flipped (255 - v). */
+export function invertImage(img: GrayImage): GrayImage {
+  const out = new Uint8Array(img.data.length);
+  for (let i = 0; i < out.length; i++) out[i] = 255 - (img.data[i] as number);
+  return { width: img.width, height: img.height, data: out };
+}
+
+/** Which polarity an image most likely holds a symbol in. */
+export function detectPolarity(img: GrayImage): 'normal' | 'inverted' {
+  return darkFraction(img) > 0.5 ? 'inverted' : 'normal';
+}
+
 export function binarize(img: GrayImage, t: number): Uint8Array {
   const out = new Uint8Array(img.data.length);
   for (let i = 0; i < img.data.length; i++) out[i] = (img.data[i] as number) <= t ? 1 : 0;

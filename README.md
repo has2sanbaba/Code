@@ -25,8 +25,22 @@ protected by **interleaved Reed–Solomon**, compressed with **DEFLATE**, and se
 with **CRC-32**. Rotation is recovered by a single correlation rather than a search,
 and perspective pose is solved from **two concentric circles** with no initial guess.
 
+نسخهٔ ۱٫۱ سه چیز اضافه می‌کند: **پاکت رمزنگاری `SECURE`** (ChaCha20-Poly1305 با
+اشتقاق کلید PBKDF2 — نماد قفل‌شده بدون کلید فقط یک قفل است، و نماد قفلِ آسیب‌دیده را
+نمی‌توان با محاسبه به متن تبدیل کرد)، **هشت پالت رنگی با کف کنتراست WCAG**، **خواندن
+نمادهای وارون** (روشن روی تیره)، و یک **اپ موبایل** (PWA نصب‌شدنی + بستهٔ Capacitor
+برای APK) که همان هسته را روی دوربین می‌برد.
+
+Version 1.1 adds a **`SECURE` envelope** (AEAD_CHACHA20_POLY1305 with PBKDF2 key
+derivation — a sealed symbol is a lock without the key, and a *damaged* sealed symbol
+cannot be computed back into plaintext), **eight palettes with a WCAG contrast
+floor**, **inverted-symbol reading** (light ink on dark substrate), and a **mobile
+app** (installable PWA plus a Capacitor shell for APKs) that runs the same core
+against a live camera.
+
 Everything in this repository is written from scratch with **zero runtime
-dependencies** — including the RFC 1951 DEFLATE codec and the PNG reader in the CLI.
+dependencies** — including the RFC 1951 DEFLATE codec, the ChaCha20-Poly1305 AEAD
+and the PNG reader in the CLI.
 
 ---
 
@@ -42,12 +56,29 @@ dependencies** — including the RFC 1951 DEFLATE codec and the PNG reader in th
 | **پیش‌پوشش**<br>Mask prior | آزمون فرضیه روی ۱۹ سلول همسایه، `Binomial(19,½)` | لکه/سوراخ به‌جای «خطا» به‌صورت «محو» اعلام می‌شود که دو برابر ارزان‌تر است |
 | **فشرده‌سازی**<br>DEFLATE | RFC 1951 درون هسته، بدون وابستگی | متن فارسی: تا **۴٫۹ برابر** دیسک کوچک‌تر؛ متن تکراری: ۸٫۴ برابر |
 | **CRC-32**<br>the arbiter | داور نهایی هر رمزگشایی | پذیرش کاذب `2⁻³²`، حتی وقتی رید–سالامون خطا را «اصلاح» کند |
+| **پاکت SECURE**<br>mode 10 | AEAD_CHACHA20_POLY1305 + PBKDF2 | بدون کلید: فقط رمزنگاشته؛ بازسازی ریاضیِ نماد آسیب‌دیده، رمزنگاشته را کامل می‌کند نه متن را |
+| **وارون‌خوانی**<br>polarity | هیستوگرام + یک تلاش محدود | نماد روشن‌روی‌تیره (چاپ سفید، حالت تاریک نمایشگر) مثل نماد معمولی خوانده می‌شود |
+| **پالت‌ها**<br>palettes | کف کنتراست ۷:۱ (چاپ) | رنگ، هندسه را لمس نمی‌کند؛ هر پالت با کاهش لومینانسِ دوربین آزموده می‌شود |
 
 ## نمونه‌ها · Samples
 
 <p align="center">
   <img src="docs/assets/example-v4.png" width="420" alt="Version 4 symbol at level Q carrying a 160-character description" />
 </p>
+
+<p align="center">
+  <img src="docs/assets/example-lapis.png" width="250" alt="Lapis lazuli palette" />
+  &nbsp;
+  <img src="docs/assets/example-night.png" width="250" alt="Inverted symbol, light ink on dark" />
+  &nbsp;
+  <img src="docs/assets/example-sealed.png" width="250" alt="Sealed symbol: ciphertext without the key" />
+</p>
+
+<p align="center"><sub>چپ به راست: پالت لاجورد · نماد وارون (روشن روی تیره) · نماد
+مهر و موم‌شده — هر سه با همین مخزن ساخته و دوباره خوانده شده‌اند؛ سومی بدون کلید فقط
+«قفل» گزارش می‌شود.<br/>Left to right: the lapis palette · an inverted symbol · a
+sealed symbol. All three were rendered and re-read by this repository; the third
+reports only "locked" without its passphrase.</sub></p>
 
 هر سه تصویر بالا با همین CLI ساخته شده‌اند و دوباره با همین CLI خوانده شده‌اند —
 بدون هیچ ویرایش دستی.
@@ -60,9 +91,11 @@ it, with no manual editing.
 ```sh
 npm install
 npm run build          # packages/core + packages/cli  (tsc -b)
-npm test               # 116 tests, ~40 s
-npm run typecheck      # core, cli and web
+npm test               # 161 tests
+npm run typecheck      # core, cli, web and mobile
 npm run dev            # playground on http://localhost:5173
+npm run mobile         # the installable mobile app on http://localhost:5174
+npm run icons          # regenerate PWA + Android icons from a live symbol
 ```
 
 ### خط فرمان · Command line
@@ -81,6 +114,16 @@ npm run cli -- encode --file firmware.bin --binary -o part.png -s 16 --selftest
 # the whole capacity table, one level, one version
 npm run cli -- capacity
 npm run cli -- capacity --ecc H --version 10
+
+# seal a payload; without the passphrase the symbol reports LOCKED only
+npm run cli -- encode "رمز گاوصندوق ۴۷۲" --pass 'correct horse' -o vault.png --selftest
+npm run cli -- decode vault.png                      # -> LOCKED: 42 B sealed with PBKDF2...
+npm run cli -- decode vault.png --pass 'correct horse'
+npm run cli -- decode vault.png --keys ring.txt      # "<hex key id>=<passphrase>" per line
+
+# a themed, print-safe palette (contrast is reported in the SVG metadata)
+npm run cli -- encode "https://simurgh.code" --theme turquoise -o art.svg
+npm run cli -- encode "https://simurgh.code" --theme lapis -o art.png -s 12
 
 # the frozen specification constants, including the Angle Track bit string
 npm run cli -- spec
@@ -106,6 +149,17 @@ symbol.inkCoverage;        // 0.502
 
 const svg = renderSVG(toModel(symbol));            // artwork, mm or px
 const img = renderRaster(toModel(symbol), { scale: 10 });   // greyscale raster
+
+const sealed = encode({ text: 'vault pin 4712', secure: { key: 'correct horse' } });
+sealed.secure.keyId;   // Uint8Array(4) -- printed, so a keyring can route
+
+const locked = decodeImage(renderRaster(toModel(sealed), { scale: 8 }));
+locked.ok;             // true  -- the *symbol* still decodes
+locked.encrypted;      // true  -- but the payload is a lock
+locked.secureInfo;     // { suite, keyId, iterations, salt, plaintextBytes }
+
+const opened = decodeImage(img, { secure: { key: 'correct horse' } });
+payloadToText(opened.payload!);                    // 'vault pin 4712'
 
 const result = decodeImage(img);                   // the full imaging pipeline
 result.ok;                                         // true
@@ -134,9 +188,26 @@ browser:
    homography rms, teeth matched, erasure cells, mask-prior seeds, CRC. Eight
    one-click presets, including one that is deliberately past the code's reach.
 3. **رمزگشایی از پرونده** — upload any PNG or JPEG of a printed or photographed
-   symbol; nothing leaves the browser.
+   symbol; nothing leaves the browser. Sealed symbols ask for their passphrase
+   inside the page and open there.
+6. **قفل و پالت** — the seal switch (passphrase, PBKDF2 cost, hidden context) and
+   the eight-palette picker sit in the encoder card; the lab decodes what a camera
+   would see, colours included.
 4. **جدول ظرفیت** — all 40 versions × 4 ECC levels.
 5. **مرزنگاری و ریاضیات** — the Crown's five bands and the decoding chain, explained.
+
+## اپ موبایل · The mobile app
+
+`apps/mobile` is a Persian, right-to-left, **installable PWA**: two tabs
+(ساخت / اسکن), a live camera viewfinder whose reticle is the Format Crown itself,
+unlocking of sealed symbols, offline operation through a service worker, and a
+download path for PNG/SVG. Decoding runs in a Web Worker so the viewfinder never
+stutters; key derivation uses the platform's native PBKDF2.
+
+`apps/android` wraps the very same bundle in Capacitor (`code.simurgh.scanner`):
+the Gradle project, CAMERA/VIBRATE permissions, and launcher icons that are
+themselves scannable v3 symbols. Building the APK needs the Android SDK, which this
+repository's CI does not have — `apps/android/README.md` has the four commands.
 
 ## اعداد کلیدی · Key numbers
 
@@ -163,6 +234,7 @@ browser:
 | [`docs/02-MATHEMATICS.md`](docs/02-MATHEMATICS.md) | ریاضیات کامل با اثبات و اندازه‌گیری: شبکهٔ مثلثی، دنباله‌های m، کد گولی و شعاع پوشش، رید–سالامون و درهم‌بستگی، مسیر مارپیچی و قضیهٔ همسایگی، آزمون فرضیهٔ پیش‌پوشش، هندسهٔ تصویریِ حلِ ژست، فشرده‌سازی، چگالی اطلاعات، نظریهٔ نمونه‌برداری |
 | [`docs/03-CAPACITY.md`](docs/03-CAPACITY.md) | جدول کامل ظرفیت ۴۰×۴، هزینهٔ واقعی بارهای رایج، قاعدهٔ انتخاب نسخه، مقایسهٔ صادقانهٔ چگالی، اندازه‌های چاپ، سقف ظرفیت |
 | [`docs/04-ROADMAP.md`](docs/04-ROADMAP.md) | وضعیت، مرزهای شناخته‌شده، و برنامه در سه افق کوتاه/میان/بلندمدت |
+| [`docs/05-SECURITY.md`](docs/05-SECURITY.md) | مدل امنیتی: دو لایهٔ قالب و مهر، فهرست صادقانهٔ نشت اطلاعات، چه چیزی آزموده شده و چه چیزی نیست، مدیریت کلید |
 
 ## ساختار مخزن · Repository layout
 
@@ -179,21 +251,24 @@ packages/core/src/
   golay.ts         exhaustive maximum-likelihood G24 decoder
   crc.ts           CRC-32, CRC-16, FNV-1a, xorshift RNG
   deflate.ts       RFC 1951 deflate + inflate, no dependencies
+  chacha20.ts      ChaCha20, Poly1305, the RFC 8439 AEAD, PBKDF2-HMAC-SHA256
   sha256.ts        SHA-256, MAC tag, constant-time comparison
   model.ts         SymbolModel: the printable description of one symbol
-  render/          raster (signed distance fields), SVG, ASCII
-  imaging/         locate, orient, sample, damage, decode, simulate
+  render/          raster (signed distance fields), SVG, ASCII, palettes
+  imaging/         locate, orient, sample, damage, decode, simulate, polarity
 
 packages/cli/src/  simurgh CLI + a dependency-free PNG reader/writer
 apps/web/          the playground (Vite, no framework)
+apps/mobile/       installable PWA: create, camera scan, unlock (Vite + worker)
+apps/android/      Capacitor shell -> APK: Gradle project, icons, permissions
 tools/             derive-angle-track.mjs — regenerates and verifies the m-sequence
-docs/              specification, mathematics, capacity, roadmap
+docs/              specification, mathematics, capacity, security model, roadmap
 ```
 
 ## آزمون‌ها · Tests
 
 ```sh
-npm test                       # all 116
+npm test                       # all 161
 npm run test:watch             # watch mode
 npx vitest run packages/core/test/imaging.test.ts   # one suite
 ```
@@ -205,10 +280,13 @@ actually emits; and the imaging tests assert the payload text, not just `ok`.
 
 ## وضعیت · Status
 
-Specification **1.0.0**, 2026-10-28. The encoder, the bit-level decoder and the
-full imaging reader are complete and tested; the CLI and the playground work end to
-end. Known limits — including what damage is genuinely beyond the code — are listed
-honestly in [`docs/04-ROADMAP.md`](docs/04-ROADMAP.md#2-known-limits-stated-plainly).
+Specification **1.1.0**, 2026-10-29. The encoder, the bit-level decoder, the full
+imaging reader, the SECURE envelope and the palette/polarity layers are complete and
+tested; the CLI, the playground and the mobile app work end to end. Known limits —
+including what damage is genuinely beyond the code, and that no APK is built in CI —
+are listed honestly in
+[`docs/04-ROADMAP.md`](docs/04-ROADMAP.md#2-known-limits-stated-plainly) and
+[`docs/05-SECURITY.md`](docs/05-SECURITY.md).
 
 ## پروانه · License
 
