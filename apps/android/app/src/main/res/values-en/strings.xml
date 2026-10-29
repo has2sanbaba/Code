@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SiMurgh Code</string>
+
+    <string name="tab_create">Create</string>
+    <string name="tab_scan">Scan</string>
+
+    <!-- create -->
+    <string name="payload_hint">Text, URL or data to encode</string>
+    <string name="ecc_label">Error-correction level</string>
+    <string name="ecc_l">L</string>
+    <string name="ecc_m">M</string>
+    <string name="ecc_q">Q</string>
+    <string name="ecc_h">H</string>
+    <string name="ecc_help">L light · M balanced · Q strong · H maximum</string>
+    <string name="theme_hint">Colour palette</string>
+    <string name="shape_hint">Cell shape</string>
+    <string name="shape_dot">Dot (default)</string>
+    <string name="shape_hex">Hexagon</string>
+    <string name="shape_square">Square</string>
+    <string name="theme_item">%1$s · %2$s (%3$s×)</string>
+    <string name="secure_switch">Sealed (SECURE): encrypt the content with a key</string>
+    <string name="secure_pass_hint">Passphrase</string>
+    <string name="secure_iter_hint">PBKDF2 iterations (default 210000)</string>
+    <string name="secure_context_hint">Context (optional): binds the key to it</string>
+    <string name="secure_help">Without the right key, only the structure of the symbol can be read, never its content. Neither tampering nor mathematical reconstruction of damaged cells recovers the encrypted text.</string>
+    <string name="generate">Generate symbol</string>
+    <string name="busy_encoding">Encoding…</string>
+    <string name="busy_selftest">Self-test: reading the symbol back…</string>
+    <string name="save">Save to gallery</string>
+    <string name="share">Share</string>
+    <string name="share_title">Share SiMurgh symbol</string>
+    <string name="saved">Saved to Pictures/SiMurgh</string>
+    <string name="save_failed">Save failed</string>
+    <string name="err_empty_payload">Enter a payload first</string>
+    <string name="err_empty_pass">Passphrase is empty</string>
+    <string name="info_line1">Version %1$d · ECC %2$s · Mask %3$d</string>
+    <string name="info_line2">%1$d cells · %2$d payload bytes · %3$d codewords · %4$d blocks</string>
+    <string name="info_line3">Ink coverage %1$d%% · Compression: %2$s · Palette %3$s</string>
+    <string name="info_sealed">Sealed · key id %1$s · %2$d PBKDF2 iterations · %3$d encrypted bytes</string>
+    <string name="yes">yes</string>
+    <string name="no">no</string>
+    <string name="selftest_ok">Self-test passed: symbol read back (%1$d ms)</string>
+    <string name="selftest_mismatch">Self-test: read-back text mismatched!</string>
+    <string name="selftest_unlocked">Opened with the key ✓</string>
+    <string name="selftest_locked">Did not open with the passphrase!</string>
+    <string name="selftest_fail">Self-test failed: symbol did not read back</string>
+
+    <!-- scan -->
+    <string name="perm_rationale">Scanning needs camera access. Frames are processed only on this device; the app has no network permission at all.</string>
+    <string name="perm_button">Grant camera access</string>
+    <string name="torch_on">Torch</string>
+    <string name="torch_off">Torch off</string>
+    <string name="scan_hint">Hold the symbol steady in frame… the first successful read pauses the scan.</string>
+    <string name="scan_locked">🔒 Sealed (SECURE) symbol — a key is required to read the content</string>
+    <string name="meta_scan">Version %1$d · %2$s · teeth %3$s · confidence %4$s · %5$d ms</string>
+    <string name="meta_extra">Inverted: %1$s · errors fixed %2$d · erasures %3$d · CRC %4$s</string>
+    <string name="meta_sealed">Key id %1$s · %2$d iterations · %3$d content bytes</string>
+    <string name="unlocked">Unlocked</string>
+    <string name="unlock_wrong">Wrong key — the symbol stayed sealed</string>
+    <string name="unlock_failed">Unlock failed</string>
+    <string name="unlock_pass_hint">Passphrase</string>
+    <string name="unlock_button">Unlock</string>
+    <string name="copy">Copy</string>
+    <string name="copied">Copied</string>
+    <string name="resume_scan">Scan again</string>
+</resources>

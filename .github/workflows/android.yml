@@ -1,0 +1,75 @@
+name: Android
+
+on:
+  push:
+    branches: [main, "arena/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  engine-and-apk:
+    name: TS core -> engine bundle -> QuickJS unit tests -> APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------- the symbology core (TypeScript) ----------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install workspace
+        run: npm ci
+
+      - name: Build core + CLI
+        run: npm run build
+
+      - name: Run the reference test suites (161 tests)
+        run: npm test
+
+      # ---------- the engine bundle the phone runs ----------
+      - name: Regenerate engine bundle and Android vectors
+        run: |
+          node tools/build-engine.mjs
+          node tools/gen-android-vectors.mjs
+
+      - name: Committed engine.js and vectors must be fresh
+        run: git diff --exit-code -- apps/android/app/src/main/assets/engine.js apps/android/app/src/test/resources
+
+      - name: Engine protocol gate (Node, bare globalThis like QuickJS)
+        run: node tools/check-engine-bundle.mjs
+
+      # ---------- the native app ----------
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.7.1"
+
+      - name: Unit tests (engine in a real QuickJS runtime) + assembleDebug
+        working-directory: apps/android
+        run: gradle --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: simurgh-android-debug-apk
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-unit-test-report
+          path: apps/android/app/build/reports/tests/testDebugUnitTest

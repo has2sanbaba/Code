@@ -20,7 +20,7 @@ packages/core    encoder, decoder, geometry, codes, DEFLATE, ChaCha20-Poly1305,
 packages/cli     simurgh encode | decode | capacity | bench | spec  (+ PNG codec)
 apps/web         playground: live encoding, robustness lab, file decoding, themes, seal
 apps/mobile      installable PWA: create + camera scan + unlock, offline, worker-based
-apps/android     Capacitor shell -> APK (Gradle project, launcher icons, permissions)
+apps/android     native Kotlin app: QuickJS engine host, CameraX scan, CI-built APK
 docs/            specification, mathematics, capacity, security model, this roadmap
 tools/           derive-angle-track.mjs -- regenerates and verifies the m-sequence
 ```
@@ -33,6 +33,12 @@ tools/           derive-angle-track.mjs -- regenerates and verifies the m-sequen
 | `pipeline.test.ts` | 53 | payload round trips in every mode, automatic segmentation and its cost model, RFC 1951 both directions *and against node:zlib*, compression's effect on version choice, all 8 masks, all 4 ECC levels, bit-flip and erasure correction at capacity, version selection, `CapacityError`, Format Crown plumbing, multi-frame streams |
 | `imaging.test.ts` | 30 | rasteriser geometry and ink, SVG/ASCII output, locator accuracy, image decode under rotation, perspective, blur, noise, occlusion, fading, resampling, all three module shapes, RGBA input, rotation recovery, rejection of non-symbols, the ECC damage ladder, the mask-prior detector |
 | `secure.test.ts` + `visual.test.ts` | 29 + 16 | RFC 8439 vectors (cipher, Poly1305, AEAD tag), differential equality with `node:crypto` and WebCrypto PBKDF2, tamper/AAD/nonce rejection, keyring and context binding, envelope wire cost, sealed round trips through images; palette contrast arithmetic, colour rendering, polarity normalisation and its retry |
+
+The Android app adds **eight JVM tests** (`apps/android/app/src/test`) that run in CI:
+they execute the *shipped* `assets/engine.js` inside a real QuickJS runtime and
+compare it bit for bit against vectors generated from the TypeScript core — encode
+exactness, sealed-envelope reproduction, full image decode, and the JNI string
+bridge with Persian text, quotes, newlines and U+2028.
 
 Measured capabilities (reference implementation, single thread):
 
@@ -90,10 +96,13 @@ These are documented, measured and deliberately not papered over.
    no key management, no signature scheme selection, and no policy for what a reader
    should do with a failed MAC. The `SECURE` envelope is a *different* layer
    (confidentiality + authenticity of the whole payload) and does not replace them.
-8. **The APK is not built here.** `apps/android` contains the Gradle project, but
-   the sandbox has no Android SDK/Maven access, so no binary is committed and no
-   emulator test was run. The identical bundle is verified as a PWA and through the
-   decode worker in Node.
+8. **The APK is built in CI; no phone has held it yet.** `apps/android` is a native
+   Kotlin project (no WebView) and `.github/workflows/android.yml` compiles it, runs
+   the engine's JVM tests inside a real QuickJS runtime, and uploads
+   `app-debug.apk`. The sandbox that wrote the code has no Android SDK or Maven
+   access, so on-device behaviour — camera framing, touch, PBKDF2 wall time inside
+   QuickJS — is reasoned about and differentially tested, but has not been observed
+   on hardware by the author.
 
 ## 3. Near term (1.2)
 
@@ -140,9 +149,10 @@ Ordered by value per unit of work.
 * **Vector artwork for print shops.** Dieline output with spot-colour separation,
   minimum-module warnings at a target dpi, and a quiet-zone violation check against
   a supplied artwork bounding box.
-* **Native camera controls on Android.** Autofocus/exposure lock and ROI tracking
-  through a Capacitor plugin; today the app relies on the WebView's `getUserMedia`
-  constraints, which is good but not optimal on slow lenses.
+* **Camera tuning on Android.** Continuous autofocus/exposure lock and ROI cropping
+  through CameraX's Camera2 interop, plus a resolution ladder for large symbols;
+  today the analyzer hands whole 960 px frames to the vision ladder, which is
+  robust but leaves low-light behaviour and frame rate on the table.
 
 ## 5. Long term
 

@@ -1,29 +1,30 @@
 /**
  * ============================================================================
- *  Android launcher icons and splash screens, drawn from the symbology itself
+ *  Launcher icons for the native app, drawn from the symbology itself
  * ============================================================================
  *
  * Every density bucket gets the same real symbol -- version 3 carrying
- * https://simurgh.code -- so the launcher icon is itself scannable, and the
- * splash screen is the icon at wall size. Adaptive-icon foregrounds are rendered
- * with a true alpha channel and the symbol inside Android's 66% safe zone, so no
- * mask (circle, squircle, rounded square) can clip the Format Crown.
+ * https://simurgh.code in the Android gold-on-lapis theme -- so the launcher
+ * icon is itself a scannable SiMurgh Code. `renderRGBA` supersamples the
+ * fractional module pitch, and the soft anti-aliased profile is exactly what
+ * the imaging pipeline's resampling path reads (2.33 px/module floor).
+ *
+ * Adaptive-icon foregrounds keep a true alpha channel (paper-distance keyed,
+ * so gold ink is opaque and anti-aliased edges keep partial coverage) and the
+ * symbol inside Android's 66/108 safe zone, so no mask -- circle, squircle,
+ * rounded square -- can clip the Format Crown.
  *
  *   node apps/android/scripts/make-android-icons.mjs      (after npm run build)
  *
- * Existing PNGs are read for their dimensions, so if Capacitor's template ever
- * changes size the output follows it instead of guessing.
+ * The xxxhdpi launcher tile is decoded afterwards with the imaging pipeline:
+ * if the icon ever stops scanning, the script fails instead of shipping.
  */
-import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
-import { dirname, resolve, join } from 'node:path';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const androidRes = resolve(here, '../android/app/src/main/res');
-if (!existsSync(androidRes)) {
-  console.error('android/ project not found -- run `npx cap add android` in apps/android first.');
-  process.exit(1);
-}
+const res = resolve(here, '../app/src/main/res');
 
 const core = await import(resolve(here, '../../../packages/core/dist/index.js'));
 const render = await import(resolve(here, '../../../packages/core/dist/render/index.js'));
@@ -39,27 +40,15 @@ const theme = { id: 'android', fa: 'اندروید', en: 'Android launcher', ink
 const symbol = core.encode({ text: PAYLOAD, ecc: 'M', version: 3 });
 const model = core.toModel(symbol);
 
-/** PNG IHDR: width and height, without needing a decoder. */
-function pngSize(path) {
-  const head = readFileSync(path).subarray(16, 24);
-  return { width: head.readUInt32BE(0), height: head.readUInt32BE(4) };
-}
-
-function writePng(path, img, channels) {
-  let samples;
-  if (channels === 4) {
-    samples = img.data;
-  } else {
-    samples = new Uint8Array(img.width * img.height * 3);
-    for (let i = 0, o = 0; i < samples.length; i += 3, o += 4) {
-      samples[i] = img.data[o];
-      samples[i + 1] = img.data[o + 1];
-      samples[i + 2] = img.data[o + 2];
-    }
-  }
-  const png = encodePNG(img.width, img.height, samples, { channels, level: 9 });
-  writeFileSync(path, png);
-  return png.length;
+/**
+ * Alpha for a foreground layer, derived from how far a pixel is from the paper
+ * colour: gold ink becomes opaque, lapis becomes transparent, and anti-aliased
+ * edges keep their partial coverage instead of turning into a dark halo.
+ */
+function luminanceAlpha(data, i) {
+  const [pr, pg, pb] = render.parseHex(LAPIS);
+  const d = Math.abs(data[i] - pr) + Math.abs(data[i + 1] - pg) + Math.abs(data[i + 2] - pb);
+  return Math.max(0, Math.min(255, Math.round((d / 120) * 255)));
 }
 
 /**
@@ -68,19 +57,17 @@ function writePng(path, img, channels) {
  * `alpha` produces a transparent-background foreground (adaptive icons);
  * `fit` is the fraction of the tile the symbol's outer diameter should occupy.
  */
-function tile(size, { alpha = false, fit = 0.92, quiet = 2.5 } = {}) {
-  // Rendered diameter, quiet zone included, is 2 * (outerRadius + quiet) modules.
-  const diameter = 2 * (model.outerRadius + quiet);
+function tile(size, { alpha = false, fit = 0.92, quiet = 3 } = {}) {
+  const diameter = 2 * (model.outerRadius + quiet); // quiet zone included, in modules
   const scale = (size * fit) / diameter;
   const img = render.renderRGBA(model, {
     theme,
     scale,
     shape: 'dot',
     quiet,
-    supersample: size >= 216 ? 2 : 4,
+    supersample: size >= 216 ? 4 : 8,
   });
 
-  // Centre (and optionally matte) into an exact-size canvas.
   const out = { width: size, height: size, data: new Uint8Array(size * size * 4) };
   const paperRgb = render.parseHex(alpha ? '#000000' : LAPIS);
   for (let i = 0; i < size * size; i++) {
@@ -110,105 +97,78 @@ function tile(size, { alpha = false, fit = 0.92, quiet = 2.5 } = {}) {
   return out;
 }
 
-/**
- * Alpha for a foreground layer, derived from how far a pixel is from the paper
- * colour: gold ink becomes opaque, lapis becomes transparent, and anti-aliased
- * edges keep their partial coverage instead of turning into a dark halo.
- */
-function luminanceAlpha(data, i) {
-  const [pr, pg, pb] = render.parseHex(LAPIS);
-  const d = Math.abs(data[i] - pr) + Math.abs(data[i + 1] - pg) + Math.abs(data[i + 2] - pb);
-  return Math.max(0, Math.min(255, Math.round((d / 120) * 255)));
-}
-
-let written = 0;
-let bytes = 0;
-
-/* ------------------------------------------------------- launcher icons */
-const densities = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
-const foreground = { mdpi: 108, hdpi: 162, xhdpi: 216, xxhdpi: 324, xxxhdpi: 432 };
-
-for (const [density, size] of Object.entries(densities)) {
-  const dir = join(androidRes, `mipmap-${density}`);
-  if (!existsSync(dir)) continue;
-  for (const name of ['ic_launcher.png', 'ic_launcher_round.png']) {
-    const path = join(dir, name);
-    const want = existsSync(path) ? pngSize(path).width : size;
-    bytes += writePng(path, tile(want, { fit: 0.94 }), 3);
-    written++;
-  }
-}
-
-for (const [density, size] of Object.entries(foreground)) {
-  const dir = join(androidRes, `mipmap-${density}`);
-  if (!existsSync(dir)) continue;
-  const path = join(dir, 'ic_launcher_foreground.png');
-  const want = existsSync(path) ? pngSize(path).width : size;
-  // Android's safe zone is the inner 66dp of a 108dp canvas: keep the Crown inside it.
-  bytes += writePng(path, tile(want, { alpha: true, fit: 0.6, quiet: 3.5 }), 4);
-  written++;
-}
-
-/* ------------------------------------------------------------ splash screens */
-const splashDirs = readdirSync(androidRes).filter((d) => d.startsWith('drawable'));
-for (const dir of splashDirs) {
-  const path = join(androidRes, dir, 'splash.png');
-  if (!existsSync(path)) continue;
-  const { width, height } = pngSize(path);
-  const img = { width, height, data: new Uint8Array(width * height * 4) };
-  const paper = render.parseHex(LAPIS);
-  for (let i = 0; i < width * height; i++) {
-    img.data[i * 4] = paper[0];
-    img.data[i * 4 + 1] = paper[1];
-    img.data[i * 4 + 2] = paper[2];
-    img.data[i * 4 + 3] = 255;
-  }
-  const symbolSize = Math.round(Math.min(width, height) * 0.46);
-  const t = tile(symbolSize, { fit: 1 });
-  const dx = Math.round((width - symbolSize) / 2);
-  const dy = Math.round((height - symbolSize) / 2);
-  for (let y = 0; y < symbolSize; y++) {
-    for (let x = 0; x < symbolSize; x++) {
-      const si = (y * symbolSize + x) * 4;
-      const di = ((y + dy) * width + (x + dx)) * 4;
-      img.data[di] = t.data[si];
-      img.data[di + 1] = t.data[si + 1];
-      img.data[di + 2] = t.data[si + 2];
-      img.data[di + 3] = 255;
+function circleMask(img) {
+  const r = img.width / 2;
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      const d = Math.hypot(x + 0.5 - r, y + 0.5 - r);
+      const i = (y * img.width + x) * 4 + 3;
+      img.data[i] = d <= r - 0.75 ? 255 : d >= r - 0.25 ? 0 : Math.round(Math.max(0, r - d) * 2 * 255);
     }
   }
-  bytes += writePng(path, img, 3);
-  written++;
+  return img;
 }
 
-/* ------------------------------------------------- adaptive icon background */
-const bgPath = join(androidRes, 'values/ic_launcher_background.xml');
-if (existsSync(bgPath)) {
-  writeFileSync(
-    bgPath,
-    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${LAPIS}</color>\n</resources>\n`,
-  );
-  console.log('  ic_launcher_background -> ' + LAPIS);
+function writePng(path, img) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, encodePNG(img.width, img.height, img.data, { channels: 4, level: 9 }));
+  console.log(`  ${path.slice(res.length + 1)}  (${img.width}x${img.height})`);
 }
 
-console.log(`wrote ${written} images, ${(bytes / 1024).toFixed(0)} KiB total`);
+const DENSITIES = [
+  { name: 'mdpi', launcher: 48, foreground: 108 },
+  { name: 'hdpi', launcher: 72, foreground: 162 },
+  { name: 'xhdpi', launcher: 96, foreground: 216 },
+  { name: 'xxhdpi', launcher: 144, foreground: 324 },
+  { name: 'xxxhdpi', launcher: 192, foreground: 432 },
+];
 
-/* ---------------------------------------------------------- self-verification */
-// The xxxhdpi launcher icon must still be readable by the very reader the app
-// ships: light-on-dark, so this also proves polarity normalisation on a real
-// Android asset rather than a synthetic one.
-{
-  const path = join(androidRes, 'mipmap-xxxhdpi/ic_launcher.png');
-  const img = tile(pngSize(path).width, { fit: 0.94 });
-  const gray = new Uint8Array(img.width * img.height);
-  for (let i = 0; i < gray.length; i++) {
-    gray[i] = Math.round(0.2126 * img.data[i * 4] + 0.7152 * img.data[i * 4 + 1] + 0.0722 * img.data[i * 4 + 2]);
-  }
-  const res = decodeImage({ width: img.width, height: img.height, data: gray });
-  if (res.ok && res.text === PAYLOAD) {
-    console.log(`  xxxhdpi icon scans back to "${res.text}" (${img.width}px, inverted=${res.diagnostics.inverted})`);
-  } else {
-    console.error(`  xxxhdpi icon does NOT scan: ${res.ok ? res.text : res.error}`);
-    process.exitCode = 1;
-  }
+console.log('launcher icons (full bleed, gold on lapis):');
+for (const d of DENSITIES) {
+  writePng(resolve(res, `mipmap-${d.name}/ic_launcher.png`), tile(d.launcher));
+}
+console.log('round launcher icons (circular alpha):');
+for (const d of DENSITIES) {
+  writePng(resolve(res, `mipmap-${d.name}/ic_launcher_round.png`), circleMask(tile(d.launcher)));
+}
+console.log('adaptive foregrounds (transparent, 66/108 safe zone):');
+for (const d of DENSITIES) {
+  writePng(resolve(res, `mipmap-${d.name}/ic_launcher_foreground.png`), tile(d.foreground, { alpha: true, fit: 0.6, quiet: 3.5 }));
+}
+
+// Adaptive-icon XML + background colour.
+const anydpi = resolve(res, 'mipmap-anydpi-v26');
+mkdirSync(anydpi, { recursive: true });
+const adaptive = (round) => `<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    ${round ? '<monochrome android:drawable="@mipmap/ic_launcher_foreground" />' : ''}
+</adaptive-icon>
+`;
+writeFileSync(resolve(anydpi, 'ic_launcher.xml'), adaptive(false));
+writeFileSync(resolve(anydpi, 'ic_launcher_round.xml'), adaptive(true));
+mkdirSync(resolve(res, 'values'), { recursive: true });
+writeFileSync(
+  resolve(res, 'values/ic_launcher_background.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">${LAPIS}</color>
+</resources>
+`,
+);
+console.log('  mipmap-anydpi-v26/ic_launcher{,_round}.xml + values/ic_launcher_background.xml');
+
+// The icon must remain a valid symbol: decode the xxxhdpi launcher tile.
+const big = tile(192);
+const gray = new Uint8Array(192 * 192);
+for (let i = 0; i < gray.length; i++) {
+  gray[i] = Math.round(0.2126 * big.data[i * 4] + 0.7152 * big.data[i * 4 + 1] + 0.0722 * big.data[i * 4 + 2]);
+}
+const back = decodeImage({ width: 192, height: 192, data: gray });
+if (!back.ok || back.text !== PAYLOAD) {
+  console.error(`icon no longer scans: ok=${back.ok} text=${back.text ?? back.error}`);
+  process.exitCode = 1;
+} else {
+  console.log(`icon scan check: "${back.text}" v${back.version} teeth ${back.diagnostics.teethMatches}/63 conf ${back.diagnostics.meanConfidence.toFixed(2)}`);
 }

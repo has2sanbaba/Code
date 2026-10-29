@@ -28,15 +28,17 @@ and perspective pose is solved from **two concentric circles** with no initial g
 نسخهٔ ۱٫۱ سه چیز اضافه می‌کند: **پاکت رمزنگاری `SECURE`** (ChaCha20-Poly1305 با
 اشتقاق کلید PBKDF2 — نماد قفل‌شده بدون کلید فقط یک قفل است، و نماد قفلِ آسیب‌دیده را
 نمی‌توان با محاسبه به متن تبدیل کرد)، **هشت پالت رنگی با کف کنتراست WCAG**، **خواندن
-نمادهای وارون** (روشن روی تیره)، و یک **اپ موبایل** (PWA نصب‌شدنی + بستهٔ Capacitor
-برای APK) که همان هسته را روی دوربین می‌برد.
+نمادهای وارون** (روشن روی تیره)، و دو اپ: یک **PWA نصب‌شدنی** و یک **اپ بومی اندروید**
+(کاتلین + CameraX، بدون WebView) که هسته را در یک ماشین‌مجازی QuickJS نهفته اجرا
+می‌کند و APK آن در هر پوش با اکشن گیت‌هاب ساخته می‌شود.
 
 Version 1.1 adds a **`SECURE` envelope** (AEAD_CHACHA20_POLY1305 with PBKDF2 key
 derivation — a sealed symbol is a lock without the key, and a *damaged* sealed symbol
 cannot be computed back into plaintext), **eight palettes with a WCAG contrast
-floor**, **inverted-symbol reading** (light ink on dark substrate), and a **mobile
-app** (installable PWA plus a Capacitor shell for APKs) that runs the same core
-against a live camera.
+floor**, **inverted-symbol reading** (light ink on dark substrate), an
+**installable PWA**, and a **native Android app** — Kotlin, CameraX, no WebView —
+that runs the same core inside an embedded QuickJS VM and whose debug APK is built
+by GitHub Actions on every push.
 
 Everything in this repository is written from scratch with **zero runtime
 dependencies** — including the RFC 1951 DEFLATE codec, the ChaCha20-Poly1305 AEAD
@@ -204,10 +206,16 @@ unlocking of sealed symbols, offline operation through a service worker, and a
 download path for PNG/SVG. Decoding runs in a Web Worker so the viewfinder never
 stutters; key derivation uses the platform's native PBKDF2.
 
-`apps/android` wraps the very same bundle in Capacitor (`code.simurgh.scanner`):
-the Gradle project, CAMERA/VIBRATE permissions, and launcher icons that are
-themselves scannable v3 symbols. Building the APK needs the Android SDK, which this
-repository's CI does not have — `apps/android/README.md` has the four commands.
+`apps/android` is a **native** Kotlin app (`code.simurgh.scanner`): Material XML
+views, a CameraX viewfinder with per-frame analysis, MediaStore saving and
+FileProvider sharing — no WebView, no HTML, and no INTERNET permission, so it is
+offline by construction. The symbology itself is the same TypeScript core bundled to
+`assets/engine.js` and executed in an embedded QuickJS VM over a single JNI bridge
+(`SimurghEngine.call(json) -> json`), which keeps the phone bit-identical to the
+reference instead of a second, drifting port. JVM unit tests run that shipped bundle
+in a real QuickJS runtime against differential vectors generated from the TS core,
+and `.github/workflows/android.yml` builds and uploads `app-debug.apk` on every
+push. The launcher icons are themselves scannable v3 symbols.
 
 ## اعداد کلیدی · Key numbers
 
@@ -260,8 +268,8 @@ packages/core/src/
 packages/cli/src/  simurgh CLI + a dependency-free PNG reader/writer
 apps/web/          the playground (Vite, no framework)
 apps/mobile/       installable PWA: create, camera scan, unlock (Vite + worker)
-apps/android/      Capacitor shell -> APK: Gradle project, icons, permissions
-tools/             derive-angle-track.mjs — regenerates and verifies the m-sequence
+apps/android/      native Kotlin app: QuickJS engine host, CameraX scan, CI-built APK
+tools/             engine bundle, Android vectors/bundle checks, m-sequence derivation
 docs/              specification, mathematics, capacity, security model, roadmap
 ```
 
@@ -278,13 +286,19 @@ silently: the DEFLATE encoder is tested **against `node:zlib` in both directions
 not only against itself; the mode-cost model is tested against what the writer
 actually emits; and the imaging tests assert the payload text, not just `ok`.
 
+In CI, eight more JVM tests (`apps/android`) execute the *shipped* engine bundle in
+a real QuickJS runtime and compare it bit for bit against vectors from the
+reference core: encode exactness, sealed envelopes, full image decode, and the
+Persian/quote/newline JNI bridge.
+
 ## وضعیت · Status
 
 Specification **1.1.0**, 2026-10-29. The encoder, the bit-level decoder, the full
 imaging reader, the SECURE envelope and the palette/polarity layers are complete and
-tested; the CLI, the playground and the mobile app work end to end. Known limits —
-including what damage is genuinely beyond the code, and that no APK is built in CI —
-are listed honestly in
+tested; the CLI, the playground, the PWA and the native Android app work end to
+end, and CI builds the debug APK. Known limits — including what damage is genuinely
+beyond the code, and that no on-device run has been observed yet — are listed
+honestly in
 [`docs/04-ROADMAP.md`](docs/04-ROADMAP.md#2-known-limits-stated-plainly) and
 [`docs/05-SECURITY.md`](docs/05-SECURITY.md).
 

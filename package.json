@@ -9,8 +9,7 @@
     "packages/core",
     "packages/cli",
     "apps/web",
-    "apps/mobile",
-    "apps/android"
+    "apps/mobile"
   ],
   "scripts": {
     "build": "npm run build -w @simurgh/core && npm run build -w @simurgh/cli",
@@ -22,10 +21,14 @@
     "test:watch": "vitest",
     "dev": "npm run dev -w @simurgh/web",
     "cli": "node --experimental-strip-types packages/cli/src/index.ts",
-    "bench": "npm run build && node packages/cli/dist/index.js bench"
+    "bench": "npm run build && node packages/cli/dist/index.js bench",
+    "engine": "node tools/build-engine.mjs",
+    "engine:check": "node tools/build-engine.mjs && node tools/check-engine-bundle.mjs",
+    "android:vectors": "npm run build && node tools/gen-android-vectors.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.9.2",
+    "esbuild": "^0.25.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vitest": "^3.2.4"
