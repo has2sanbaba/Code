@@ -1,0 +1,31 @@
+{
+  "name": "simurgh-code",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SiMurgh Code (SMC) - a radial hexagonal 2D symbology with an m-sequence angle track, Golay(24,12) format crown and Reed-Solomon interleaved payload.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/core",
+    "packages/cli",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm run build -w @simurgh/core && npm run build -w @simurgh/cli",
+    "typecheck": "tsc -b packages/core packages/cli apps/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "npm run dev -w @simurgh/web",
+    "cli": "node --experimental-strip-types packages/cli/src/index.ts",
+    "bench": "npm run build && node packages/cli/dist/index.js bench"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}

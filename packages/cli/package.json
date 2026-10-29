@@ -1,0 +1,11 @@
+{
+  "name": "@simurgh/cli",
+  "version": "1.0.0",
+  "description": "Command line encoder/decoder for SiMurgh Code.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "simurgh": "./dist/index.js", "smc": "./dist/index.js" },
+  "main": "./dist/index.js",
+  "scripts": { "build": "tsc -b", "clean": "rm -rf dist *.tsbuildinfo" },
+  "dependencies": { "@simurgh/core": "1.0.0" }
+}

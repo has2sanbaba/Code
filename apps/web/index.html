@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>سیمرغ کد — SiMurgh Code</title>
+    <meta
+      name="description"
+      content="زمین‌بازی سیمرغ کد: یک نمادنگاری دوبعدی شعاعی با مرزنگاری تاج (هاله، دانه‌ها، دندان‌ها، لیمبوس)، کد گولی برای قالب و رید–سالامون برای داده."
+    />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">◉</span>
+        <div>
+          <h1>سیمرغ کد <span class="latin">SiMurgh Code</span></h1>
+          <p class="tagline">
+            نمادنگاری دوبعدی شعاعی روی شبکهٔ مثلثی — با مرزنگاری «تاج»، دندهٔ زاویه از دنبالهٔ m،
+            و قالبِ محافظت‌شده با کد گولی <span class="latin">(24,12)</span>.
+          </p>
+        </div>
+      </div>
+      <dl class="meta">
+        <div><dt>مشخصات</dt><dd id="spec-version">—</dd></div>
+        <div><dt>پیشوند AIM</dt><dd id="aim-prefix" class="mono">—</dd></div>
+        <div><dt>شناسه</dt><dd id="symbology-id" class="mono">—</dd></div>
+      </dl>
+    </header>
+
+    <main>
+      <!-- ------------------------------------------------------- encode -->
+      <section class="card" id="encode-card">
+        <h2>۱. رمزگذاری <span class="latin">Encode</span></h2>
+
+        <div class="grid two">
+          <div class="stack">
+            <label class="field">
+              <span>متن / پیوند / داده <span class="latin">payload</span></span>
+              <textarea id="payload" rows="4" spellcheck="false">https://simurgh.example/fa/سلام-世界</textarea>
+            </label>
+
+            <div class="row wrap">
+              <button type="button" class="chip" data-sample="https://simurgh.example/fa/سلام-世界">پیوند فارسی</button>
+              <button type="button" class="chip" data-sample="سیمرغ پرنده‌ای افسانه‌ای است که در ادبیات پارسی نماد خرد و رستاخیز به شمار می‌رود.">متن فارسی</button>
+              <button type="button" class="chip" data-sample="Hello, SiMurgh! A radial 2D symbology.">Latin text</button>
+              <button type="button" class="chip" data-sample="0123456789012345678901234567890123456789">رقم‌ها</button>
+              <button type="button" class="chip" data-sample="vnd.simurgh:card/9f3a?lang=fa">شناسهٔ دلخواه</button>
+              <button type="button" class="chip" id="sample-binary">دادهٔ دودویی</button>
+            </div>
+
+            <div class="row wrap controls">
+              <label class="field inline">
+                <span>تصحیح خطا <span class="latin">ECC</span></span>
+                <select id="ecc">
+                  <option value="L">L — ۱۶٪ افزونگی</option>
+                  <option value="M" selected>M — ۲۸٪</option>
+                  <option value="Q">Q — ۴۰٪</option>
+                  <option value="H">H — ۵۵٪</option>
+                </select>
+              </label>
+
+              <label class="field inline">
+                <span>نسخه <span class="latin">version</span></span>
+                <select id="version">
+                  <option value="auto" selected>خودکار</option>
+                </select>
+              </label>
+
+              <label class="field inline">
+                <span>پوشش <span class="latin">mask</span></span>
+                <select id="mask">
+                  <option value="auto" selected>خودکار</option>
+                  <option>0</option><option>1</option><option>2</option><option>3</option>
+                  <option>4</option><option>5</option><option>6</option><option>7</option>
+                </select>
+              </label>
+
+              <label class="field inline">
+                <span>شکل ماژول</span>
+                <select id="shape">
+                  <option value="dot" selected>دایره</option>
+                  <option value="hex">شش‌گوش</option>
+                  <option value="square">مربع</option>
+                </select>
+              </label>
+
+              <label class="field inline">
+                <span>فشرده‌سازی <span class="latin">DEFLATE</span></span>
+                <input type="checkbox" id="compression" checked />
+              </label>
+            </div>
+
+            <div class="row wrap controls">
+              <label class="field inline grow">
+                <span>مقیاس raster — <b id="scale-value">10</b> px/ماژول</span>
+                <input type="range" id="scale" min="3" max="24" step="1" value="10" />
+              </label>
+              <label class="field inline grow">
+                <span>حاشیهٔ آرام — <b id="quiet-value">2.5</b> ماژول</span>
+                <input type="range" id="quiet" min="0" max="6" step="0.5" value="2.5" />
+              </label>
+            </div>
+
+            <div class="row wrap">
+              <button type="button" class="primary" id="render">بازسازی نماد</button>
+              <button type="button" id="download-svg">بارگیری SVG</button>
+              <button type="button" id="download-png">بارگیری PNG</button>
+              <button type="button" id="copy-json">کپی JSON</button>
+            </div>
+            <p class="hint" id="encode-error" role="status"></p>
+          </div>
+
+          <div class="stack">
+            <div class="stage" id="stage" aria-label="پیش‌نمایش نماد"></div>
+            <div class="stats" id="stats"></div>
+          </div>
+        </div>
+
+        <details class="drawer">
+          <summary>رکورد کامل نماد <span class="latin">format record</span></summary>
+          <pre class="mono scroll" id="record">—</pre>
+        </details>
+      </section>
+
+      <!-- -------------------------------------------------- robustness -->
+      <section class="card" id="lab-card">
+        <h2>۲. آزمایشگاه مقاومت <span class="latin">Robustness lab</span></h2>
+        <p class="lede">
+          نماد را در مرورگر خراب کنید — چرخش، پرسپکتیو، نویز، ماتی، پارگی و کاهش وضوح —
+          سپس ببینید لولهٔ رمزگشایی (مکان‌یابی، حل پرسپکتیو، همسان‌سازی دنده‌ها، رید–سالامون) تا کجا دوام می‌آورد.
+        </p>
+
+        <div class="grid two">
+          <div class="stack controls">
+            <label class="field grow">
+              <span>چرخش — <b id="rot-value">0</b>°</span>
+              <input type="range" id="rot" min="0" max="359" step="1" value="0" />
+            </label>
+            <label class="field grow">
+              <span>انگاشت (پرسپکتیو) — <b id="tilt-value">0</b>°</span>
+              <input type="range" id="tilt" min="0" max="45" step="1" value="0" />
+            </label>
+            <label class="field grow">
+              <span>نویز گاوسی σ — <b id="noise-value">0</b></span>
+              <input type="range" id="noise" min="0" max="60" step="1" value="0" />
+            </label>
+            <label class="field grow">
+              <span>ماتی — <b id="blur-value">0</b></span>
+              <input type="range" id="blur" min="0" max="4" step="0.5" value="0" />
+            </label>
+            <label class="field grow">
+              <span>پارگی/لکه — <b id="hole-value">0</b>٪ شعاع</span>
+              <input type="range" id="hole" min="0" max="25" step="1" value="0" />
+            </label>
+            <label class="field grow">
+              <span>کاهش وضوح — <b id="res-value">0</b> پیکسل (۰ = خاموش)</span>
+              <input type="range" id="res" min="0" max="400" step="10" value="0" />
+            </label>
+            <label class="field grow">
+              <span>کم‌رنگی / محو شدن چاپ — <b id="fade-value">0</b></span>
+              <input type="range" id="fade" min="0" max="100" step="5" value="0" />
+            </label>
+            <div class="row wrap" id="presets">
+              <button type="button" class="chip" data-preset="clean">تمیز</button>
+              <button type="button" class="chip" data-preset="rot">چرخش ۳۷°</button>
+              <button type="button" class="chip" data-preset="persp">پرسپکتیو ۲۵°</button>
+              <button type="button" class="chip" data-preset="hole">پارگی ۱۲٪</button>
+              <button type="button" class="chip" data-preset="fade">چاپ محو + نویز</button>
+              <button type="button" class="chip" data-preset="lowres">وضوح کم</button>
+              <button type="button" class="chip" data-preset="combined">ترکیب ملایم</button>
+              <button type="button" class="chip" data-preset="brutal">ترکیب سنگین</button>
+            </div>
+            <div class="row wrap">
+              <button type="button" class="primary" id="run-lab">اجرای رمزگشایی</button>
+              <button type="button" id="reset-lab">بازنشانی</button>
+              <label class="field inline"><span>سطح ECC برای آزمایش</span>
+                <select id="lab-ecc">
+                  <option value="L">L</option><option value="M" selected>M</option>
+                  <option value="Q">Q</option><option value="H">H</option>
+                </select>
+              </label>
+            </div>
+            <p class="hint">هر اجرا روی تصویر ۴۳۰ پیکسلی حدود نیم ثانیه طول می‌کشد.</p>
+          </div>
+
+          <div class="stack">
+            <canvas id="lab-canvas" width="430" height="430" aria-label="تصویر آسیب‌دیده"></canvas>
+            <div class="lab-result" id="lab-result">
+              <p class="muted">هنوز آزمونی اجرا نشده است.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------ upload -->
+      <section class="card" id="upload-card">
+        <h2>۳. رمزگشایی از تصویر <span class="latin">Decode a file</span></h2>
+        <p class="lede">
+          یک تصویر <span class="mono">PNG</span> یا <span class="mono">JPEG</span> از نماد چاپ‌شده یا صفحهٔ نمایش بارگذاری کنید.
+          رمزگشایی کاملاً در مرورگر شما انجام می‌شود؛ هیچ تصویری به جایی فرستاده نمی‌شود.
+        </p>
+        <div class="row wrap">
+          <input type="file" id="file" accept="image/*" />
+          <label class="field inline"><span>خروجی JSON</span><input type="checkbox" id="file-json" /></label>
+        </div>
+        <div class="grid two" id="upload-out">
+          <canvas id="upload-canvas" width="0" height="0" hidden></canvas>
+          <div class="lab-result" id="file-result"><p class="muted">پرونده‌ای انتخاب نشده است.</p></div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------- capacity -->
+      <section class="card" id="capacity-card">
+        <h2>۴. جدول ظرفیت <span class="latin">Capacity</span></h2>
+        <p class="lede">
+          اعداد، گنجایش <em>مفید</em> کاربر به بایت هستند (چهار کدواژهٔ <span class="mono">CRC-32</span> از قبل کسر شده‌اند).
+          با فشرده‌سازی روشن، متن و پیوند معمولاً سه تا هشت برابر بیشتر جا می‌شود.
+        </p>
+        <div class="scroll table-wrap">
+          <table id="capacity-table">
+            <thead>
+              <tr>
+                <th>نسخه</th><th>K</th><th>قطر چاپ (ماژول)</th><th>سلول داده</th>
+                <th>L بایت</th><th>M بایت</th><th>Q بایت</th><th>H بایت</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- -------------------------------------------------------- spec -->
+      <section class="card" id="spec-card">
+        <h2>۵. مرزنگاری و ریاضیات <span class="latin">Crown &amp; mathematics</span></h2>
+        <div class="grid two">
+          <div class="stack">
+            <h3>تاج: پنج نوار هم‌مرکز</h3>
+            <ol class="bands">
+              <li><b>هاله</b> <span class="mono">[K+0.90, K+1.20]</span> — حلقهٔ نازک داخلی؛ همراه لیمبوس، فاصلهٔ دقیقاً ۳٫۸۰ ماژول را می‌سازد که مقیاس محلی را بدون هیچ فرضی دربارهٔ وضوح تصویر بازیابی می‌کند.</li>
+              <li><b>دانه‌ها</b> <span class="mono">K+2.20</span> — ۲۴ گوی با فاصلهٔ ۱۵ درجه: کد گولی گستردهٔ <span class="mono">(24,12)</span> با فاصلهٔ حداقل ۸ (۳ خطا را اصلاح و ۴ خطا را آشکار می‌کند).</li>
+              <li><b>دندان‌ها</b> <span class="mono">[K+3.10, K+4.10]</span> — ۶۳ قطاع از دنبالهٔ m مرتبهٔ ۶ با <span class="mono">p(x)=x⁶+x+1</span>؛ خودهمبستگی چرخه‌ای آن برای هر جابه‌جایی ناتوان برابر <span class="mono">−1</span> است، پس زاویه با یک همبستگی چرخه یکتا پیدا می‌شود.</li>
+              <li><b>منقار</b> — دندان صفر تا <span class="mono">K+4.70</span> کشیده شده و مرجع فاز است.</li>
+              <li><b>لیمبوس</b> <span class="mono">[K+4.70, K+5.00]</span> — حلقهٔ اندازه‌گیری بیرونی؛ زیر پرسپکتیو به بیضی تبدیل می‌شود و با هشت پارامتر شعاعی برازش می‌گردد.</li>
+            </ol>
+            <h3>چرا شعاعی و شش‌گوش؟</h3>
+            <p>
+              داده روی شبکهٔ مثلثی نشسته است: هر سلول شش همسایه دارد و چگالی بسته‌بندی
+              <span class="mono">π/(2√3) ≈ 0.907</span> است، در برابر <span class="mono">0.785</span> برای شبکهٔ مربعی —
+              یعنی حدود ۱۵٪ سلول بیشتر در همان قطر چاپ. مسیر بیت‌ها مارپیچی (serpentine) است،
+              طوری که هر دو ماژول پیاپی همسایهٔ شبکه‌اند؛ در نتیجه یک لکهٔ فشردهٔ خرابی به
+              <span class="mono">O(R)</span> پاره‌خط بدل می‌شود نه <span class="mono">O(R²)</span> سلول پراکنده،
+              و با درهم‌بستگی بلوک‌ها تقریباً همهٔ آن‌ها قابل اصلاح می‌شوند.
+            </p>
+          </div>
+          <div class="stack">
+            <h3>زنجیرهٔ رمزگشایی</h3>
+            <ol class="bands">
+              <li><b>مکان‌یابی</b> — پروفیل شعاعی با ۲۵۳ پرتو، فیلتر منطبق بر نوارهای تاج، و برازش دایرهٔ لیمبوس.</li>
+              <li><b>حل پرسپکتیو</b> — دو دایرهٔ هم‌مرکز با نسبت شعاع معلوم، هشت معادلهٔ شعاعی
+                <span class="mono">‖Gp‖ = ρ</span> می‌دهند که نسبت به چرخش ناورداست؛ بدون حدس اولیه و بدون واگرایی.</li>
+              <li><b>چرخش</b> — همبستگی چرخهٔ ۶۳ دندانه با دنبالهٔ m؛ خطای کمتر از یک‌صدم دندان.</li>
+              <li><b>نمونه‌برداری</b> — میانگین دیسکی ۱۳ نقطه‌ای، آستانهٔ دوشکوفی، و اعتماد به ازای هر سلول.</li>
+              <li><b>آشکارساز آسیب</b> — پیش‌پوشش، هر ۱۹ سلول همسایه را <span class="mono">Binomial(19, ½)</span> می‌کند؛
+                یک ناحیهٔ یکدستِ پاک با احتمال <span class="mono">3.8e-5</span> رخ می‌دهد، پس لکه‌ها به‌جای خطا «محو» (erasure) اعلام می‌شوند که دو برابر ارزان‌تر است.</li>
+              <li><b>اصلاح</b> — رید–سالامون با بودجهٔ محو به ازای هر بلوک، سپس <span class="mono">CRC-32</span> به عنوان داور نهایی.</li>
+            </ol>
+            <h3>حد عملی</h3>
+            <p>
+              رمزگشایی تا حدود <b>۳ تا ۴ پیکسل بر ماژول</b> مطمئن است؛ در ۲٫۳ پیکسل بر ماژول هم با مسیر نمونه‌برداری مجدد کار می‌کند.
+              برای چاپ، قطر ۳۸ ماژولی نسخهٔ ۱ در ۱۰ میلی‌متر یعنی تقریباً ۹۶ نقطه در اینچ —
+              و سطح مقطع خطا با <span class="mono">H</span> به ۵۵٪ افزونگی می‌رسد.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        <span id="footer-name">سیمرغ کد</span> — مشخصات <span id="footer-version">—</span>.
+        هستهٔ رمزگذار/رمزگشا بدون هیچ وابستگی خارجی است؛ فشرده‌سازی <span class="mono">DEFLATE</span> (RFC 1951) هم درون خود هسته پیاده‌سازی شده است.
+      </p>
+    </footer>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
