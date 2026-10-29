@@ -219,7 +219,14 @@ verified to carry the QuickJS native library for all four phone CPU architecture
 (`armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`), installable from **Android 6.0
 (API 23)** to the newest release, and published to **GitHub Releases**
 (`v<version>-android` plus a rolling `latest`) on every build of `main`. The
-launcher icons are themselves scannable v3 symbols.
+launcher icons are themselves scannable v3 symbols. Since **1.4.0** the app is
+**bilingual** (an in-app فارسی/English toggle that persists), can **scan a still
+image from the gallery** through the photo picker (no camera permission), creates
+symbols **faster** via a bit-level self-test instead of a second full imaging
+decode, and renders a **cleaner default look** (ink + square modules + a 4-module
+quiet zone). On-device decode speed is interpreter-bound by design; reaching
+QR-class sub-100 ms camera reads requires a native decode port, which the roadmap
+states plainly rather than over-promising.
 
 ## اعداد کلیدی · Key numbers
 

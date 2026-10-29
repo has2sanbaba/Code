@@ -10,6 +10,61 @@ HTML, and no INTERNET permission**: the app is offline by construction.
 
 ---
 
+## تازه در ۱٫۴٫۰ · New in 1.4.0
+
+**دوزبانه با کلید درون‌اپ.** فارسی و انگلیسی هر دو داخل خود APK هستند و یک دکمهٔ
+همیشگی در نوار بالا زبان را عوض می‌کند؛ انتخاب روی دستگاه می‌ماند (روی اندروید ۱۳+
+از راه تنظیم زبان هر اپ، و روی نسخه‌های قدیمی‌تر با `AppCompatLocalesService`).
+
+**اسکن از گالری.** دکمهٔ «گالری» در صفحهٔ اسکن یک تصویر ثابت را از photo picker
+می‌خواند و با نمایهٔ کامل رمزگشایی می‌کند — بدون نیاز به اجازهٔ دوربین. این مسیرِ
+مطمئنِ شناخت است: یک تصویر شارپ به‌جای جریان فریم‌های لرزیده.
+
+**ساخت نماد سریع‌تر.** خودآزمایی پس از ساخت دیگر یک رمزگشایی تصویریِ کامل نیست؛
+کدواژه‌ها مستقیم (Reed–Solomon + Golay + CRC) بازخوانی می‌شوند و برای نماد قفل‌شده
+از استنتاج دومِ PBKDF2 صرف‌نظر می‌شود. raster پیش‌فرض کوچک‌تر (scale 8) و VM هنگام
+راه‌اندازی اپ پیش‌گرم می‌شود. دکمهٔ «خودآزمایی تصویری» همان بررسی کامل را در صورت
+خواست کاربر اجرا می‌کند.
+
+**دوربین زنده‌تر.** یک خط وضعیت زمان و دندان‌های قفل‌شدهٔ هر تلاش را نشان می‌دهد تا
+پنل هرگز «یخ‌زده» به نظر نرسد؛ ضربه روی پیش‌نمایش فوکوس را به همان نقطه می‌برد.
+
+**ظاهر تمیزتر به‌صورت پیش‌فرض.** جوهر (سیاه روی سفید) + سلول مربعی + حاشیهٔ آرامِ
+۴ ماژولی — کنتراست و سادگی‌ای که بهترین اسکن را می‌دهد؛ پالت‌های تزئینی یک ضربه
+فاصله دارند.
+
+**Bilingual with an in-app switch.** Persian and English both ship in the APK and
+an always-visible toolbar button flips between them; the choice persists (per-app
+language on Android 13+, `AppCompatLocalesService` below).
+
+**Scan from gallery.** The scan panel's "Gallery" button reads a still image
+through the photo picker and decodes it with the full profile — no camera
+permission needed. This is the reliable recognition path: one sharp image instead
+of a stream of motion-blurred frames.
+
+**Faster symbol creation.** The post-encode self-test is now bit-level
+(Reed–Solomon + Golay + CRC read straight back) instead of a second full imaging
+decode, and sealed symbols skip the duplicate PBKDF2 derivation. The default
+raster is smaller (scale 8) and the VM is warmed at app start. A "Verify by
+image" button still runs the thorough imaging read on demand.
+
+**A livelier camera.** A status line reports each attempt's time and locked-teeth
+count so the panel never looks frozen, and tapping the preview drives autofocus to
+that point.
+
+**Cleaner look by default.** Ink (black on white) + square modules + a 4-module
+quiet zone — the highest-contrast, simplest scan; ornate palettes remain one tap
+away.
+
+> **صداقت دربارهٔ سرعت · Honesty about speed.** موتور همان هستهٔ TypeScript در
+> QuickJS است (بدون JIT). رمزگشایی تمیز روی Node با JIT ≈ ۳۰–۴۰۰ ms است و روی
+> مفسرِ گوشی چند برابر آن؛ پس «صدم ثانیه مثل QR» با این موتور شدنی نیست — رسیدن به
+> آن نیازمند بازنویسی بومی (Kotlin/C++) لولهٔ رمزگشایی است که در نقشهٔ راه
+> (`docs/04-ROADMAP.md`) به‌صورت صریح آمده است. آنچه ۱٫۴٫۰ تحویل می‌دهد حذف کارهای
+> زائد (base64 خطی، خودآزمایی تصویریِ دوم، raster بزرگ) و مسیر مطمئن گالری است.
+
+---
+
 ## معماری · Architecture
 
 ```

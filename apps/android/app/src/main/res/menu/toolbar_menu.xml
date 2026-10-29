@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <!--
+      One always-visible text action that flips the app language. Its title is
+      set at runtime to the language it will switch *to* ("English" when the UI
+      is Persian, "فارسی" when it is English), so the control is self-describing
+      in whichever language the user currently reads.
+    -->
+    <item
+        android:id="@+id/action_language"
+        android:title="@string/lang_switch_to_en"
+        app:showAsAction="always" />
+</menu>

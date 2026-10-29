@@ -94,6 +94,8 @@ interface Request {
   shape?: 'dot' | 'hex' | 'square';
   theme?: string;
   scale?: number;
+  /** Quiet-zone width in modules. Default: the spec's 2.5; the app asks for 4. */
+  quiet?: number;
   wantSvg?: boolean;
   caption?: string | null;
   secure?: {
@@ -115,16 +117,35 @@ interface Request {
   fast?: boolean;
 }
 
+/*
+ * Base64 is on the hot path of *every* engine call: a camera frame arrives as
+ * grayB64 (decoded here) and an encoded raster leaves as rgbaB64 (encoded here).
+ * The first version scanned a 64-char alphabet with indexOf per input byte
+ * (~O(64n)) and built the output with `out += ...` (O(n^2) string copies). In
+ * the QuickJS interpreter -- which has no JIT and runs numeric/string code
+ * roughly 20-100x slower than V8 -- that turned a single 960px frame or a
+ * large raster into seconds of work. These versions are O(n): a charCode->value
+ * lookup table for decoding, and chunked String.fromCharCode + Array.join for
+ * encoding. Output is byte-identical standard base64, so every committed vector
+ * and the 39-check bundle gate are unaffected.
+ */
+const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const B64_DECODE = new Int32Array(128).fill(-1);
+for (let i = 0; i < 64; i++) B64_DECODE[B64_ALPHABET.charCodeAt(i)] = i;
+const B64_CODES = new Uint16Array(64);
+for (let i = 0; i < 64; i++) B64_CODES[i] = B64_ALPHABET.charCodeAt(i);
+
 function b64ToBytes(b64: string): Uint8Array {
-  // QuickJS has no atob; a 64-line-free decoder keeps the bundle self-contained.
-  const AL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const clean = b64.replace(/[^A-Za-z0-9+/]/g, '');
-  const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
+  // QuickJS has no atob. Padding ('='), newlines and any non-alphabet byte map
+  // to -1 in the lookup and are skipped, so trusted input needs no regex pass.
+  const n = b64.length;
+  const out = new Uint8Array(((n >> 2) + 1) * 3);
   let o = 0;
   let buf = 0;
   let bits = 0;
-  for (const ch of clean) {
-    const v = AL.indexOf(ch);
+  for (let i = 0; i < n; i++) {
+    const c = b64.charCodeAt(i);
+    const v = c < 128 ? B64_DECODE[c] : -1;
     if (v < 0) continue;
     buf = (buf << 6) | v;
     bits += 6;
@@ -137,17 +158,24 @@ function b64ToBytes(b64: string): Uint8Array {
 }
 
 function bytesToB64(bytes: Uint8Array): string {
-  const AL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let out = '';
-  for (let i = 0; i < bytes.length; i += 3) {
+  // 4 code units per triple, materialised with a fixed-arity fromCharCode (safe
+  // in every engine, unlike apply-on-typed-array) and joined once at the end.
+  const n = bytes.length;
+  const parts: string[] = [];
+  for (let i = 0; i < n; i += 3) {
     const b0 = bytes[i] as number;
-    const b1 = i + 1 < bytes.length ? (bytes[i + 1] as number) : 0;
-    const b2 = i + 2 < bytes.length ? (bytes[i + 2] as number) : 0;
-    out += AL[b0 >> 2] + AL[((b0 & 3) << 4) | (b1 >> 4)];
-    out += i + 1 < bytes.length ? AL[((b1 & 15) << 2) | (b2 >> 6)] : '=';
-    out += i + 2 < bytes.length ? AL[b2 & 63] : '=';
+    const b1 = i + 1 < n ? (bytes[i + 1] as number) : 0;
+    const b2 = i + 2 < n ? (bytes[i + 2] as number) : 0;
+    parts.push(
+      String.fromCharCode(
+        B64_CODES[b0 >> 2] as number,
+        B64_CODES[((b0 & 3) << 4) | (b1 >> 4)] as number,
+        i + 1 < n ? (B64_CODES[((b1 & 15) << 2) | (b2 >> 6)] as number) : 61,
+        i + 2 < n ? (B64_CODES[b2 & 63] as number) : 61,
+      ),
+    );
   }
-  return out;
+  return parts.join('');
 }
 
 function encodeOp(req: Request): Record<string, unknown> {
@@ -176,6 +204,7 @@ function encodeOp(req: Request): Record<string, unknown> {
     theme: req.theme ?? 'ink',
     shape: req.shape ?? 'dot',
     scale: req.scale ?? 8,
+    ...(req.quiet !== undefined ? { quiet: req.quiet } : {}),
   });
 
   return {

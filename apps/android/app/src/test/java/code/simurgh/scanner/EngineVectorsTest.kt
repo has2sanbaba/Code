@@ -208,6 +208,36 @@ class EngineVectorsTest {
         }
     }
 
+    @Test
+    fun rasterRoundTripsThroughQuickJs() = withEngine { vm ->
+        // Exercises bytesToB64 *inside the VM*, not just in the Node gate: the
+        // encoder emits raster.rgbaB64, and feeding it straight back through the
+        // decode op must return the same text. This is the exact path the app's
+        // create panel uses, so a QuickJS-specific base64 regression fails here.
+        val req =
+            JSONObject()
+                .put("op", "encode")
+                .put("text", "https://simurgh.code/raster")
+                .put("ecc", "M")
+                .put("scale", 6)
+        val r = Engine.callRaw(vm, req)
+        assertTrue(r.optString("error"), r.optBoolean("ok"))
+        val raster = r.getJSONObject("raster")
+        val rgbaB64 = raster.getString("rgbaB64")
+        assertTrue("raster base64 too short", rgbaB64.length > 100)
+        val back =
+            Engine.callRaw(
+                vm,
+                JSONObject()
+                    .put("op", "decode")
+                    .put("rgbaB64", rgbaB64)
+                    .put("width", raster.getInt("width"))
+                    .put("height", raster.getInt("height")),
+            )
+        assertTrue("raster decode: ${back.optString("error")}", back.optBoolean("ok"))
+        assertEquals("https://simurgh.code/raster", back.getString("text"))
+    }
+
     /* ------------------------------------------------------------ the bridge */
 
     @Test
