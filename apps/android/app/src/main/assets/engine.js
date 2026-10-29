@@ -5170,6 +5170,47 @@
   var SPEC_DATE = "2026-10-29";
 
   // tools/engine-entry.ts
+  function utf8Bytes(s) {
+    const out = [];
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 128) {
+        out.push(c);
+      } else if (c < 2048) {
+        out.push(192 | c >> 6, 128 | c & 63);
+      } else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+        const c2 = s.charCodeAt(i + 1);
+        if (c2 >= 56320 && c2 <= 57343) {
+          const cp = 65536 + (c - 55296 << 10) + (c2 - 56320);
+          out.push(
+            240 | cp >> 18,
+            128 | cp >> 12 & 63,
+            128 | cp >> 6 & 63,
+            128 | cp & 63
+          );
+          i++;
+        } else {
+          out.push(239, 191, 189);
+        }
+      } else if (c >= 56320 && c <= 57343) {
+        out.push(239, 191, 189);
+      } else {
+        out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+      }
+    }
+    return Uint8Array.from(out);
+  }
+  var globals = globalThis;
+  if (typeof globals.TextEncoder === "undefined") {
+    globals.TextEncoder = class {
+      constructor() {
+        __publicField(this, "encoding", "utf-8");
+      }
+      encode(input) {
+        return utf8Bytes(input === void 0 ? "" : String(input));
+      }
+    };
+  }
   function b64ToBytes(b64) {
     const AL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     const clean = b64.replace(/[^A-Za-z0-9+/]/g, "");

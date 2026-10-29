@@ -76,7 +76,7 @@ One entry point, JSON both directions — the smallest possible JNI surface:
 
 APK در **GitHub Actions** ساخته می‌شود (`.github/workflows/android.yml`): در هر
 پوش، هستهٔ TS تست می‌شود (۱۶۱ آزمون)، بستهٔ موتور و بردارها بازتولید و تازه‌بودن
-آن‌ها با `git diff` اثبات می‌شود، پروتکل موتور در Node بررسی می‌شود (۳۶ بررسی)،
+آن‌ها با `git diff` اثبات می‌شود، پروتکل موتور در Node بررسی می‌شود (۳۹ بررسی، شامل هم‌ارزی polyfill با TextEncoder بومی)،
 سپس Gradle آزمون‌های JVM را در QuickJS واقعی اجرا کرده و
 **`app-debug.apk`** را به‌عنوان artifact آپلود می‌کند
 (`simurgh-android-debug-apk` در صفحهٔ run).
@@ -84,7 +84,7 @@ APK در **GitHub Actions** ساخته می‌شود (`.github/workflows/android
 The APK is built by **GitHub Actions** (`.github/workflows/android.yml`): every push
 runs the TS suites (161 tests), regenerates the engine bundle and vectors and proves
 the committed copies are fresh (`git diff --exit-code`), gates the engine protocol in
-Node (36 checks), then runs the JVM tests inside a real QuickJS runtime and uploads
+Node (39 checks, incl. polyfill parity with the native TextEncoder), then runs the JVM tests inside a real QuickJS runtime and uploads
 **`app-debug.apk`** as the `simurgh-android-debug-apk` artifact on the run page.
 
 محلی (نیاز به JDK 21، Android SDK 36، Gradle 9.7.1 و Node 22): · Locally (JDK 21,

@@ -34,6 +34,54 @@ import {
 import { THEMES, THEME_IDS, renderRGBA, renderSVG, themeContrast } from '@simurgh/core/render';
 import { decodeImage, decodeRGBA } from '@simurgh/core/imaging';
 
+/*
+ * QuickJS ships the ECMAScript standard library only -- no TextEncoder.
+ * The PBKDF2 passphrase path uses it for UTF-8 conversion, so install a
+ * byte-identical polyfill when it is missing (WHATWG UTF-8, lone surrogates
+ * become U+FFFD). On Node/JVM hosts the native one stays untouched; the
+ * bundle check proves both produce identical envelopes.
+ */
+function utf8Bytes(s: string): Uint8Array {
+  const out: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) {
+      out.push(c);
+    } else if (c < 0x800) {
+      out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+    } else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+      const c2 = s.charCodeAt(i + 1);
+      if (c2 >= 0xdc00 && c2 <= 0xdfff) {
+        const cp = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00);
+        out.push(
+          0xf0 | (cp >> 18),
+          0x80 | ((cp >> 12) & 0x3f),
+          0x80 | ((cp >> 6) & 0x3f),
+          0x80 | (cp & 0x3f),
+        );
+        i++;
+      } else {
+        out.push(0xef, 0xbf, 0xbd);
+      }
+    } else if (c >= 0xdc00 && c <= 0xdfff) {
+      out.push(0xef, 0xbf, 0xbd);
+    } else {
+      out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    }
+  }
+  return Uint8Array.from(out);
+}
+
+const globals = globalThis as unknown as Record<string, unknown>;
+if (typeof globals.TextEncoder === 'undefined') {
+  globals.TextEncoder = class {
+    readonly encoding = 'utf-8';
+    encode(input?: string): Uint8Array {
+      return utf8Bytes(input === undefined ? '' : String(input));
+    }
+  };
+}
+
 interface Request {
   op: 'encode' | 'decode' | 'themes' | 'spec';
   text?: string;

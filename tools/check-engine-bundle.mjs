@@ -99,5 +99,18 @@ for (const v of vectors.images) {
     r.diag.inverted === (v.theme === 'night'), `${r.ms} ms conf ${r.diag.confidence}`);
 }
 
+/* ---- QuickJS parity: no TextEncoder on the device VM ---------------- */
+const nativeKeyId = sealed.secure.keyId;
+const nativeRaster = sealed.raster.rgbaB64;
+delete globalThis.TextEncoder;
+(0, eval)(readFileSync(bundlePath, 'utf8'));
+const polySeal = call({ op: 'encode', text: 'رمز گاوصندوق ۴۷۱۲', ecc: 'H', secure: { pass: 'correct horse', iterations: 4096, saltHex: '00112233445566778899aabbccddeeff', nonceHex: '000102030405060708090a0b' }, scale: 7 });
+const polyOpened = call({ op: 'decode', rgbaB64: nativeRaster, width: sealed.raster.width, height: sealed.raster.height, pass: 'correct horse' });
+check('polyfill envelope parity', polySeal.ok === true && polySeal.secure.keyId === nativeKeyId && polySeal.raster.rgbaB64 === nativeRaster, `keyId ${polySeal.secure?.keyId}`);
+check('polyfill unlock parity', polyOpened.ok === true && polyOpened.unlocked === true && polyOpened.text === 'رمز گاوصندوق ۴۷۱۲');
+const polyPass = call({ op: 'encode', text: 'x', secure: { pass: 'پس\u200cورد 🔑 x', iterations: 1000, saltHex: '00112233445566778899aabbccddeeff', nonceHex: '000102030405060708090a0b' }, scale: 6 });
+const polyPassOpen = call({ op: 'decode', rgbaB64: polyPass.raster.rgbaB64, width: polyPass.raster.width, height: polyPass.raster.height, pass: 'پس\u200cورد 🔑 x' });
+check('polyfill non-ASCII passphrase (surrogate pair)', polyPass.ok === true && polyPassOpen.ok === true && polyPassOpen.unlocked === true && polyPassOpen.text === 'x');
+
 console.log(fails === 0 ? `\nENGINE BUNDLE: ${checks}/${checks} PASSED` : `\nENGINE BUNDLE: ${fails}/${checks} FAILURES`);
 process.exit(fails ? 1 : 0);
