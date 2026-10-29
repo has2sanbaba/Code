@@ -81,10 +81,18 @@ jobs:
             echo
             echo '```'
             if [ -f /tmp/gradle.log ]; then
+              echo '----- failed test events -----'
+              grep -E ' (FAILED|PASSED|SKIPPED)$|AssertionError|QuickJsException|UnsatisfiedLink|Exception:' /tmp/gradle.log | head -60 || true
+              for f in apps/android/app/build/test-results/testDebugUnitTest/TEST-*.xml; do
+                [ -e "$f" ] || continue
+                echo "----- $f -----"
+                grep -o '<testsuite name="[^"]*" tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' "$f" || true
+                awk '/<testcase/{name=$0} /<failure/{print name; infail=1} infail{print} /<\/failure>/{infail=0}' "$f" | head -120
+              done
               start=$(grep -n -m1 'What went wrong' /tmp/gradle.log | cut -d: -f1 || true)
-              if [ -n "$start" ]; then sed -n "${start},$((start + 60))p" /tmp/gradle.log; fi
+              if [ -n "$start" ]; then sed -n "${start},$((start + 40))p" /tmp/gradle.log; fi
               echo '----- tail -----'
-              tail -n 80 /tmp/gradle.log
+              tail -n 30 /tmp/gradle.log
             else
               echo "Gradle log not found; the failure happened in an earlier step."
             fi
