@@ -52,9 +52,11 @@ configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configu
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.19.0")
+    // Pinned to versions whose AAR metadata is satisfied by compileSdk 36:
+    // core-ktx 1.19.0 demands compileSdk 37 (CI told us so directly).
+    implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("com.google.android.material:material:1.13.0")
+    implementation("com.google.android.material:material:1.12.0")
 
     // Camera: CameraX preview + frame analysis. No Google Play Services, no
     // ML Kit, no third-party scanner -- the symbology is ours.
