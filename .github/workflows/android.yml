@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
 jobs:
   engine-and-apk:
     name: TS core -> engine bundle -> QuickJS unit tests -> APK
@@ -58,7 +63,42 @@ jobs:
 
       - name: Unit tests (engine in a real QuickJS runtime) + assembleDebug
         working-directory: apps/android
-        run: gradle --no-daemon testDebugUnitTest assembleDebug
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --console=plain testDebugUnitTest assembleDebug 2>&1 | tee /tmp/gradle.log
+
+      # The authoring sandbox cannot fetch Actions log files, so a failing run
+      # posts the relevant Gradle output into the pull request instead.
+      - name: Report failure into the PR
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          {
+            echo "### Android CI failed (run ${{ github.run_id }})"
+            echo
+            echo '```'
+            if [ -f /tmp/gradle.log ]; then
+              start=$(grep -n -m1 'What went wrong' /tmp/gradle.log | cut -d: -f1 || true)
+              if [ -n "$start" ]; then sed -n "${start},$((start + 60))p" /tmp/gradle.log; fi
+              echo '----- tail -----'
+              tail -n 80 /tmp/gradle.log
+            else
+              echo "Gradle log not found; the failure happened in an earlier step."
+            fi
+            echo '```'
+          } > /tmp/report.md
+          PR="${{ github.event.pull_request.number }}"
+          if [ -z "$PR" ]; then
+            PR=$(gh pr list --head-ref "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          fi
+          if [ -n "$PR" ]; then
+            gh pr comment "$PR" --body-file /tmp/report.md
+          else
+            cat /tmp/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
