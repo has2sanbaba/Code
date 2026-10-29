@@ -98,11 +98,16 @@ These are documented, measured and deliberately not papered over.
    (confidentiality + authenticity of the whole payload) and does not replace them.
 8. **The APK is built in CI; no phone has held it yet.** `apps/android` is a native
    Kotlin project (no WebView) and `.github/workflows/android.yml` compiles it, runs
-   the engine's JVM tests inside a real QuickJS runtime, and uploads
-   `app-debug.apk`. The sandbox that wrote the code has no Android SDK or Maven
-   access, so on-device behaviour — camera framing, touch, PBKDF2 wall time inside
-   QuickJS — is reasoned about and differentially tested, but has not been observed
-   on hardware by the author.
+   the engine's JVM tests inside a real QuickJS runtime, verifies the one universal
+   APK carries all four phone CPU ABIs (`armeabi-v7a`, `arm64-v8a`, `x86`,
+   `x86_64`), and publishes it to **GitHub Releases** (`v<version>-android` plus a
+   rolling `latest`) on every build of `main`. It targets **Android 6.0 (API 23)
+   through the newest release** — 23 is the floor quickjs-kt's AAR allows, so
+   pre-Marshmallow devices are out of reach with this engine. The sandbox that wrote
+   the code has no Android SDK, Maven access or attached device, so on-device
+   behaviour — camera framing, touch, PBKDF2 wall time inside QuickJS, install on a
+   real 32-bit handset — is reasoned about and differentially tested, but has not
+   been observed on hardware by the author.
 
 ## 3. Near term (1.2)
 

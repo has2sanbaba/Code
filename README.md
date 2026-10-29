@@ -214,8 +214,12 @@ offline by construction. The symbology itself is the same TypeScript core bundle
 (`SimurghEngine.call(json) -> json`), which keeps the phone bit-identical to the
 reference instead of a second, drifting port. JVM unit tests run that shipped bundle
 in a real QuickJS runtime against differential vectors generated from the TS core,
-and `.github/workflows/android.yml` builds and uploads `app-debug.apk` on every
-push. The launcher icons are themselves scannable v3 symbols.
+and `.github/workflows/android.yml` builds one **universal APK** on every push —
+verified to carry the QuickJS native library for all four phone CPU architectures
+(`armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`), installable from **Android 6.0
+(API 23)** to the newest release, and published to **GitHub Releases**
+(`v<version>-android` plus a rolling `latest`) on every build of `main`. The
+launcher icons are themselves scannable v3 symbols.
 
 ## اعداد کلیدی · Key numbers
 

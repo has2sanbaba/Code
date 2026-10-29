@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   actions: read
 
@@ -115,9 +115,53 @@ jobs:
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload unit test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-unit-test-report
-          path: apps/android/app/build/reports/tests/testDebugUnitTest
+      # One universal APK must carry the QuickJS native library for every phone
+      # CPU; fail loudly if a build ever drops an ABI.
+      - name: Verify all four ABIs are inside the APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=apps/android/app/build/outputs/apk/debug/app-debug.apk
+          found=$(unzip -Z1 "$APK" 'lib/*' | cut -d/ -f2 | sort -u | tr '\n' ' ')
+          echo "ABIs in APK: $found"
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            unzip -Z1 "$APK" "lib/$abi/libquickjs*.so" >/dev/null 2>&1 || {
+              echo "MISSING ABI: $abi"; exit 1; }
+          done
+          echo "All four ABIs present (32/64-bit ARM + 32/64-bit x86)."
+          {
+            echo "APK_ABIS=$found"
+            echo "APK_BYTES=$(stat -c%s "$APK")"
+          } >> "$GITHUB_ENV"
+
+      # Every build on main lands in GitHub Releases: a versioned tag plus a
+      # rolling "latest" release, so the APK is downloadable without signing in
+      # to Actions. Runs on main only (pull requests cannot write releases).
+      - name: Publish APK to GitHub Releases
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK=apps/android/app/build/outputs/apk/debug/app-debug.apk
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)"/\1/p' apps/android/app/build.gradle.kts | head -1)
+          cp "$APK" "SiMurgh-Code-${VERSION}.apk"
+          cp "$APK" "SiMurgh-Code-latest.apk"
+          cat > notes.md <<EOF
+          SiMurgh Code ${VERSION} — native Android (Kotlin + CameraX, QuickJS engine).
+
+          Built from commit ${GITHUB_SHA::7} by GitHub Actions. One universal debug-signed
+          APK: installs on Android 6.0 (API 23) through the newest release, on every phone
+          CPU: ${APK_ABIS}. No INTERNET permission — offline by construction.
+
+          Install: download the APK below, allow "install unknown apps", then open it.
+          Size: ${APK_BYTES} bytes.
+          EOF
+          gh release create "v${VERSION}-android" "SiMurgh-Code-${VERSION}.apk" \
+            --title "SiMurgh Code ${VERSION} — Android" --notes-file notes.md --latest 2>/dev/null || \
+            gh release upload "v${VERSION}-android" "SiMurgh-Code-${VERSION}.apk" --clobber
+          gh release create "latest" "SiMurgh-Code-latest.apk" \
+            --title "SiMurgh Code — latest Android build" --notes-file notes.md 2>/dev/null || \
+            gh release upload "latest" "SiMurgh-Code-latest.apk" --clobber
+          echo "published v${VERSION}-android and latest"
