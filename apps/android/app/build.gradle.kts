@@ -1,6 +1,8 @@
 plugins {
-    // Kotlin support is built into AGP 9; no separate KGP plugin.
     id("com.android.application")
+    // Built-in Kotlin is disabled in gradle.properties; KGP matches the
+    // metadata version quickjs-kt 1.0.15 publishes (2.4.10).
+    id("org.jetbrains.kotlin.android")
 }
 
 android {

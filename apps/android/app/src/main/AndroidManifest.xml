@@ -3,7 +3,7 @@
 
     <!--
       The app is offline by construction: there is no INTERNET permission, so
-      nothing -- not the engine, not analytics, not an ad SDK -- can ever leave
+      nothing (not the engine, not analytics, not an ad SDK) can ever leave
       the device. Camera is the only capability we ask for; external storage
       (pre-Q only) is for saving generated symbols into the gallery.
     -->
