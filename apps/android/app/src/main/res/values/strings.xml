@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">سیمرغ‌کد</string>
+
+    <string name="tab_create">ساختن</string>
+    <string name="tab_scan">اسکن</string>
+
+    <!-- create -->
+    <string name="payload_hint">متن، پیوند یا داده‌ای که باید رمز شود</string>
+    <string name="ecc_label">سطح اصلاح خطا</string>
+    <string name="ecc_l">L</string>
+    <string name="ecc_m">M</string>
+    <string name="ecc_q">Q</string>
+    <string name="ecc_h">H</string>
+    <string name="ecc_help">L سبک · M متعادل · Q قوی · H حداکثر</string>
+    <string name="theme_hint">پالت رنگ</string>
+    <string name="shape_hint">شکل سلول‌ها</string>
+    <string name="shape_dot">گرد (پیش‌فرض)</string>
+    <string name="shape_hex">شش‌گوش</string>
+    <string name="shape_square">مربع</string>
+    <string name="theme_item">%1$s · %2$s (%3$s×)</string>
+    <string name="secure_switch">قفل‌شده (SECURE): محتوا با کلید رمزنگاری شود</string>
+    <string name="secure_pass_hint">گذرواژه</string>
+    <string name="secure_iter_hint">تکرار PBKDF2 (پیش‌فرض ۲۱۰۰۰۰)</string>
+    <string name="secure_context_hint">زمینه (اختیاری): کلید به این متن مقید می‌شود</string>
+    <string name="secure_help">بدون کلید درست، از نماد فقط ساختارش خوانده می‌شود، نه محتوا. نه دستکاری و نه بازسازی ریاضی سلول‌های آسیب‌دیده، متن رمزشده را برنمی‌گرداند.</string>
+    <string name="generate">ساخت نماد</string>
+    <string name="busy_encoding">در حال ساخت نماد…</string>
+    <string name="busy_selftest">خودآزمایی: بازخوانی نماد…</string>
+    <string name="save">ذخیره در گالری</string>
+    <string name="share">هم‌رسانی</string>
+    <string name="share_title">هم‌رسانی نماد سیمرغ</string>
+    <string name="saved">در Pictures/SiMurgh ذخیره شد</string>
+    <string name="save_failed">ذخیره ناموفق بود</string>
+    <string name="err_empty_payload">ابتدا متنی بنویسید</string>
+    <string name="err_empty_pass">گذرواژه خالی است</string>
+    <string name="info_line1">نسخه %1$d · اصلاح خطا %2$s · ماسک %3$d</string>
+    <string name="info_line2">%1$d سلول · %2$d بایت مفید · %3$d کدواژه · %4$d بلوک</string>
+    <string name="info_line3">پوشش جوهر %1$d٪ · فشرده‌سازی: %2$s · پالت %3$s</string>
+    <string name="info_sealed">قفل‌شده · شناسه کلید %1$s · %2$d تکرار PBKDF2 · %3$d بایت رمزشده</string>
+    <string name="yes">بله</string>
+    <string name="no">خیر</string>
+    <string name="selftest_ok">خودآزمایی موفق: نماد بازخوانی شد (%1$d ms)</string>
+    <string name="selftest_mismatch">خودآزمایی: متن بازخوانی‌شده مطابقت نکرد!</string>
+    <string name="selftest_unlocked">با کلید باز شد ✓</string>
+    <string name="selftest_locked">با گذرواژه باز نشد!</string>
+    <string name="selftest_fail">خودآزمایی ناموفق: نماد بازخوانی نشد</string>
+
+    <!-- scan -->
+    <string name="perm_rationale">برای اسکن، دسترسی دوربین لازم است. تصویرها فقط روی خود دستگاه پردازش می‌شوند؛ این اپ هیچ دسترسی شبکه ندارد.</string>
+    <string name="perm_button">دادن دسترسی دوربین</string>
+    <string name="torch_on">نور</string>
+    <string name="torch_off">خاموش کردن نور</string>
+    <string name="scan_hint">نماد را روبه‌رو و در کادر نگه دارید… نخستین خوانش موفق، اسکن را متوقف می‌کند.</string>
+    <string name="scan_locked">🔒 نماد قفل‌شده (SECURE) — برای دیدن محتوا کلید لازم است</string>
+    <string name="meta_scan">نسخه %1$d · %2$s · دندان %3$s · اطمینان %4$s · %5$d ms</string>
+    <string name="meta_extra">وارون: %1$s · خطای تصحیح‌شده %2$d · پاک‌شده %3$d · CRC %4$s</string>
+    <string name="meta_sealed">شناسه کلید %1$s · %2$d تکرار · %3$d بایت محتوا</string>
+    <string name="unlocked">قفل باز شد</string>
+    <string name="unlock_wrong">کلید نادرست — نماد قفل ماند</string>
+    <string name="unlock_failed">بازکردن ناموفق</string>
+    <string name="unlock_pass_hint">گذرواژه</string>
+    <string name="unlock_button">بازکردن</string>
+    <string name="copy">کپی</string>
+    <string name="copied">کپی شد</string>
+    <string name="resume_scan">اسکن دوباره</string>
+</resources>

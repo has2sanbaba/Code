@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SiMurgh" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/lapis</item>
+        <item name="colorOnPrimary">@color/gold</item>
+        <item name="colorSecondary">@color/gold</item>
+    </style>
+</resources>

@@ -1,52 +1,148 @@
-# سیمرغ‌کد برای اندروید — Android build
+# سیمرغ‌کد برای اندروید · SiMurgh Code for Android
 
-This folder wraps the mobile PWA (`apps/mobile`) in a Capacitor shell, so the
-*same* TypeScript implementation ships both as an installable web app and as a
-native APK. There is no second implementation of the symbology anywhere: the
-WebView loads `apps/mobile/dist`, and every byte of cryptography runs inside it.
+یک **اپ بومی اندروید** — کاتلین، رابط کاربری XML/Material، دوربین CameraX،
+ذخیره در MediaStore و هم‌رسانی با FileProvider. **بدون WebView، بدون HTML، بدون
+اجازهٔ اینترنت**: اپ به‌طور ساختاری آفلاین است.
 
-## What is here
+A **native Android app** — Kotlin, Material XML views, a CameraX viewfinder with
+per-frame analysis, MediaStore saving and FileProvider sharing. **No WebView, no
+HTML, and no INTERNET permission**: the app is offline by construction.
 
-| Path                          | What it is |
-| ----------------------------- | ---------- |
-| `capacitor.config.ts`         | App id `code.simurgh.scanner`, webDir `../mobile/dist`, HTTPS scheme, no cleartext |
-| `android/`                    | The Gradle project (`cap add android`), with SiMurgh launcher icons and splash |
-| `scripts/make-android-icons.mjs` | Regenerates every density bucket from a real, scannable v3 symbol |
-| `app/src/main/AndroidManifest.xml` | CAMERA + VIBRATE permissions; camera declared *not required* |
+---
 
-The launcher icon is not a drawing of a code, it **is** a code: version 3 carrying
-`https://simurgh.code`, gold on lapis (10.6:1 contrast). `make-android-icons.mjs`
-decodes the icon it just wrote and fails the run if the reader cannot open it.
+## معماری · Architecture
 
-## Building an APK (needs the Android SDK)
+```
+┌────────────────────────────  APK  ────────────────────────────┐
+│  Kotlin (native)                                              │
+│    MainActivity ── CreateController      ScanController       │
+│      Material views    │                    │ CameraX         │
+│      MediaStore/share  │                    │ YUV → grayscale │
+│      SecureRandom ─────┤                    │ Base64 ─────────┤
+│                        ▼                    ▼                 │
+│    Engine.kt  ── one JNI bridge ──►  QuickJS VM (embedded)    │
+│      SimurghEngine.call(requestJson) -> responseJson          │
+│                        │                                      │
+│    assets/engine.js    ▼                                      │
+│      the TypeScript core: geometry, Format Crown, Golay(24,12),│
+│      Reed–Solomon, DEFLATE, ChaCha20-Poly1305, PBKDF2, the     │
+│      whole imaging pipeline — the *same* source the 161        │
+│      repository test suites exercise.                          │
+└────────────────────────────────────────────────────────────────┘
+```
 
-The Android SDK, Gradle and Maven are not available in this repository's build
-environment, so no binary is committed. On a machine with the SDK:
+**چرا موتور در QuickJS؟** دو گزینه بود: بازنویسی ~۵۰۰۰ خط لولهٔ تصویربرداری به
+کاتلین (که بدون دستگاه/امولاتور قابل‌تأیید نبود و از مرجع واگرا می‌شد)، یا اجرای
+**همان هستهٔ TypeScript** در یک ماشین‌مجازی نهفته. گزینهٔ دوم انتخاب شد: کدِ روی
+تلفن **بیت‌به‌بیت** همان کد مرجع است، و آزمون‌های JVM در CI همین بستهٔ ارسالی را
+در یک QuickJS واقعی با بردارهای دیفرانسیل تولیدشده از هستهٔ TS مقایسه می‌کنند.
+هزینهٔ صادقانهٔ آن: تفسیر JS از کد بومی کندتر است (رمزگشایی تمیز ≈ صدها
+میلی‌ثانیه؛ PBKDF2 با ۲۱۰٬۰۰۰ تکرار روی تلفن چند ثانیه — به همین دلیل شمار
+تکرار در رابط ساخت قابل تنظیم است).
 
-```bash
-npm install                        # repo root: installs Capacitor too
-npm run build -w @simurgh/mobile   # the web bundle the WebView loads
+**Why is the engine in QuickJS?** The alternative was porting ~5,000 lines of
+imaging pipeline to Kotlin — unverifiable without a device and guaranteed to drift
+from the reference. Instead the phone runs the *same* TypeScript core inside an
+embedded VM, bit-identical to what the 161 test suites exercise, and CI proves it:
+JVM unit tests execute the shipped `assets/engine.js` in a real QuickJS runtime
+against differential vectors generated from the TS core. The honest cost: interpreted
+JS is slower than native code (clean decodes ≈ hundreds of milliseconds; PBKDF2 at
+210,000 iterations takes seconds on a phone — which is why the create panel lets you
+choose the iteration count).
+
+نکتهٔ امنیتی: QuickJS هیچ CSPRNG ندارد. نمک (۱۶ بایت) و نانس (۱۲ بایت) پاکت
+SECURE را **کاتلین با `SecureRandom` می‌سازد** و صریح به موتور می‌دهد؛
+`Math.random` هرگز به پاکت نزدیک نمی‌شود.
+
+Security note: QuickJS has no CSPRNG. Kotlin draws the SECURE envelope's salt
+(16 B) and nonce (12 B) with `SecureRandom` and passes them in explicitly;
+`Math.random` never touches an envelope.
+
+## پل · The bridge
+
+یک ورودی، JSON در هر دو جهت — کوچک‌ترین سطح JNI ممکن:
+
+One entry point, JSON both directions — the smallest possible JNI surface:
+
+| `op` | ورودی · in | خروجی · out |
+|---|---|---|
+| `encode` | `text`/`url`/`dataHex`/`geo`, `ecc`, `theme`, `shape`, `scale`, `secure{pass,iterations,saltHex,nonceHex,context}` | `version,ecc,mask,cells,payloadBytes,codewords,blocks,formatWord,dataBitsHex,beadsHex,inkCoverage,segments,secure{keyId,ciphertextHex,…},raster{width,height,rgbaB64},svg?` |
+| `decode` | `grayB64`/`rgbaB64` + `width/height`, `pass`/`keyHex`/`context`, `fast` | `ok,ms,text,encrypted,unlocked,secureInfo,segments,diag{teeth,crown,confidence,rotationDeg,inverted,erasures,errorsFixed,crc,…}` |
+| `themes` | — | هشت پالت با کنتراست اندازه‌گیری‌شده · the eight palettes with measured contrast |
+| `spec` | — | `name,id,version,date` (1.1.0 / 2026-10-29) |
+| `decodeBits` | `dataBitsHex,beadsHex,secureJson?` | decode سطح بیت، برای آزمون‌ها · bit-level decode, used by tests |
+
+## ساخت · Building
+
+APK در **GitHub Actions** ساخته می‌شود (`.github/workflows/android.yml`): در هر
+پوش، هستهٔ TS تست می‌شود (۱۶۱ آزمون)، بستهٔ موتور و بردارها بازتولید و تازه‌بودن
+آن‌ها با `git diff` اثبات می‌شود، پروتکل موتور در Node بررسی می‌شود (۳۹ بررسی، شامل هم‌ارزی polyfill با TextEncoder بومی)،
+سپس Gradle آزمون‌های JVM را در QuickJS واقعی اجرا کرده و
+**`app-debug.apk`** را به‌عنوان artifact آپلود می‌کند
+(`simurgh-android-debug-apk` در صفحهٔ run).
+
+The APK is built by **GitHub Actions** (`.github/workflows/android.yml`): every push
+runs the TS suites (161 tests), regenerates the engine bundle and vectors and proves
+the committed copies are fresh (`git diff --exit-code`), gates the engine protocol in
+Node (39 checks, incl. polyfill parity with the native TextEncoder), then runs the JVM tests inside a real QuickJS runtime and uploads
+**`app-debug.apk`** as the `simurgh-android-debug-apk` artifact on the run page.
+
+محلی (نیاز به JDK 21، Android SDK 36، Gradle 9.7.1 و Node 22): · Locally (JDK 21,
+Android SDK 36, Gradle 9.7.1, Node 22):
+
+```sh
+npm ci && npm run build          # در ریشهٔ مخزن · at the repo root
+node tools/build-engine.mjs      # assets/engine.js
+node tools/gen-android-vectors.mjs
 cd apps/android
-npx cap sync android               # copies ../mobile/dist into assets/public
-./android/gradlew assembleDebug    # -> android/app/build/outputs/apk/debug/app-debug.apk
+gradle testDebugUnitTest assembleDebug
+# APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-For a release:
+این مخزن عمدی **Gradle wrapper ندارد** (در محیط توسعه، دسترسی به
+services.gradle.org نبود)؛ CI از `gradle/actions/setup-gradle` با نسخهٔ سنجاق‌شدهٔ
+9.7.1 استفاده می‌کند. در Android Studio هم پروژه مستقیماً باز می‌شود.
 
-```bash
-./android/gradlew bundleRelease    # signed with your own keystore
+There is deliberately **no Gradle wrapper** in the repo (the authoring sandbox could
+not reach services.gradle.org); CI pins Gradle 9.7.1 through
+`gradle/actions/setup-gradle`. Android Studio opens the project directly.
+
+## آزمون‌ها · Tests
+
+`EngineVectorsTest` (JVM، بدون دستگاه) همان `engine.js` ارسالی را در QuickJS اجرا
+می‌کند و با `vectors.json` + تصاویر PGM که `tools/gen-android-vectors.mjs` از هستهٔ
+مرجع می‌گیرد مقایسه می‌کند:
+
+1. `specIsFrozen` — نام/شناسه/نسخهٔ مشخصات.
+2. `themesAreCompleteAndPrintSafe` — ۸ پالت، کنتراست ≥ 7، print-safe.
+3. `encodeMatchesReferenceBitForBit` — ۶ بارِ مفید (فارسی/URL/دودویی/geo):
+   `dataBits`، مهره‌های تاج، `formatWord`، ماسک، نسخه، بایت‌ها، کدواژه‌ها.
+4. `decodeBitsRoundTripsEveryVector` — مسیر سطح بیت + CRC.
+5. `sealedEnvelopesMatchReference` — `keyId` و **متن رمزشده** پاکت‌های ثابت
+   بازتولیدپذیر؛ بازشدن با کلید، قفل‌ماندن بدون کلید و با کلید غلط.
+6. `renderedImagesDecode` — سه تصویر رندرشده (جوهر/وارونِ شب/لاجورد): متن،
+   دندان ۶۳/۶۳، نسخه، پرچم وارونگی، CRC.
+7. `persianQuotesAndNewlinesSurviveTheBridge` — فرار از JS-string + مسیر یونیکد JNI.
+8. `garbageIsRejectedCleanly` — ورودی زباله، op ناشناخته، secure بدون کلید.
+
+## فایل‌ها · Files
+
+```
+app/src/main/java/code/simurgh/scanner/
+  Engine.kt            میزبان QuickJS + پل JSON + SecureRandom
+  MainActivity.kt      یک اکتیویتی بومی، دو پنل
+  CreateController.kt  ساخت نماد + خودآزمایی بازخوانی + ذخیره/هم‌رسانی
+  ScanController.kt    CameraX: پیش‌نمایش، تحلیل فریم، قفل‌گشایی
+  Yuv.kt               YUV_420_888 → خاکستری راست‌گرد + کوچک‌سازی جعبه‌ای
+  Bitmaps.kt           RGBA → Bitmap، PNG، MediaStore، FileProvider
+app/src/main/assets/engine.js      بستهٔ موتور (۱۸۳ KiB، esbuild IIFE، es2019)
+app/src/test/resources/            vectors.json + سه PGM مرجع
+scripts/make-android-icons.mjs     آیکون‌های لانچر — خودِ نماد v3 اسکن‌شدنی
 ```
 
-## Without the SDK: install as a PWA
+آیکون لانچر یک **نماد سیمرغ واقعی (v3/M)** با `https://simurgh.code` است؛ اسکریپت
+پس از تولید، نسخهٔ xxxhdpi را با لولهٔ تصویربرداری بازخوانی می‌کند و در صورت
+شکست، خروجی ۱ می‌دهد.
 
-The identical app installs straight from a browser (Chrome on Android:
-*Add to Home screen*). It is fully offline after first load — the service worker
-caches the shell — and requests camera access exactly like the APK does.
-
-## Permissions, honestly
-
-- **CAMERA** — the scanner. Frames are decoded on-device in a Web Worker and are
-  never uploaded; the app performs no network requests at all.
-- **VIBRATE** — a 28 ms buzz on a successful scan.
-- Nothing else: no storage permission (payloads stay in memory; preferences use
-  the WebView's own localStorage), no location, no contacts.
+The launcher icon is a real scannable v3 symbol; the generator re-decodes the
+xxxhdpi tile through the imaging pipeline and fails if it ever stops scanning.
