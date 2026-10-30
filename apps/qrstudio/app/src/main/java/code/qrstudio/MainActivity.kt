@@ -49,8 +49,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var saveButton: MaterialButton
     private lateinit var shareButton: MaterialButton
 
-    private var shapeIndex = 1 // rounded
-    private var paletteIndex = 0
+    // Square is the guaranteed-scannable shape (ZXing-Java rejects rounded/dot
+    // geometry); rounded/dot stay opt-in and are guarded by the on-device
+    // self-test. Default palette is the violet gradient so the first render still
+    // looks designed, not classic black-on-white.
+    private var shapeIndex = 0
+    private var paletteIndex = 2
     private var pickedImg: Img? = null
     private var lastBitmap: Bitmap? = null
 
@@ -142,7 +146,7 @@ class MainActivity : AppCompatActivity() {
         val palette = palettes.getOrElse(paletteIndex) { palettes[0] }
         val options =
             ArtOptions(
-                scale = 10,
+                scale = 12,
                 quiet = 4,
                 shape = shapes.getOrElse(shapeIndex) { ModuleShape.ROUNDED },
                 dark = palette.dark,

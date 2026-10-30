@@ -19,7 +19,9 @@ enum class ModuleShape { SQUARE, ROUNDED, DOT }
  *  - a centre emblem covers <= 15% of the module area and sits on a light pad.
  */
 data class ArtOptions(
-    val scale: Int = 10,
+    // 12 px/module keeps strict binarizers (ZXing's 8x8 local-threshold blocks)
+    // sitting well inside a module even when the shape is rounded or dotted.
+    val scale: Int = 12,
     val quiet: Int = 4,
     val shape: ModuleShape = ModuleShape.ROUNDED,
     val dark: Rgb = Rgb.BLACK,
@@ -106,8 +108,10 @@ object ArtRenderer {
         colour: Rgb,
     ) {
         val argb = colour.argb()
-        val r = scale * 0.30
-        val rad = scale * 0.45
+        // Fuller shapes scan better: a light corner cut for ROUNDED and a dot that
+        // nearly fills its cell, so module centres and run-lengths stay unambiguous.
+        val r = scale * 0.22
+        val rad = scale * 0.5
         val c = scale / 2.0
         for (ly in 0 until scale) {
             val row = (oy + ly) * stride
