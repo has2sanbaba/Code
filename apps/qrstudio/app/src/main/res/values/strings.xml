@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">آرت کیوآر</string>
+
+    <string name="payload_hint">متن یا پیوندی که باید کد شود</string>
+    <string name="ecc_label">سطح اصلاح خطا</string>
+    <string name="ecc_l">L</string>
+    <string name="ecc_m">M</string>
+    <string name="ecc_q">Q</string>
+    <string name="ecc_h">H</string>
+    <string name="ecc_help">برای کدهای گرافیکی و دارای عکس، H توصیه می‌شود (۳۰٪ بازیابی)</string>
+    <string name="shape_hint">شکل ماژول‌ها</string>
+    <string name="palette_hint">پالت رنگ</string>
+    <string name="mosaic_switch">موزاییک عکس: رنگ ماژول‌ها از عکس</string>
+    <string name="emblem_switch">نشان عکس: عکس در مرکز کد</string>
+    <string name="pick_photo">انتخاب عکس از گالری</string>
+    <string name="generate">ساخت کد گرافیکی</string>
+    <string name="busy">در حال ساخت و خودآزمایی…</string>
+    <string name="scannable_ok">✓ قابل اسکن — تأیید ZXing در %1$d ms</string>
+    <string name="scannable_fail">✗ خودآزمایی ناموفق — سبک را ساده‌تر کنید</string>
+    <string name="save">ذخیره</string>
+    <string name="share">هم‌رسانی</string>
+    <string name="share_title">هم‌رسانی کد کیوآر</string>
+    <string name="saved">در Pictures/ArtQR ذخیره شد</string>
+    <string name="save_failed">ذخیره ناموفق بود</string>
+    <string name="err_empty">ابتدا متنی بنویسید</string>
+    <string name="err_photo">ابتدا یک عکس انتخاب کنید</string>
+    <string name="photo_loaded">عکس آماده است</string>
+
+    <string-array name="shape_names">
+        <item>مربع</item>
+        <item>گردگوشه</item>
+        <item>نقطه</item>
+    </string-array>
+
+    <string-array name="palette_names">
+        <item>کلاسیک</item>
+        <item>سرمه‌ای / کرم</item>
+        <item>گرادیان بنفش</item>
+        <item>گرادیان غروب</item>
+        <item>سبز جنگلی</item>
+    </string-array>
+</resources>
