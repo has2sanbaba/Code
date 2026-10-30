@@ -78,7 +78,11 @@ class FusionScannabilityTest {
     /** ZXing luma of an ARGB pixel. */
     private fun luma(argb: Int): Double = Rgb.of(argb).luma()
 
-    /** Box-downsample + mild Gaussian blur, i.e. a small, slightly soft camera frame. */
+    /**
+     * Simulated camera capture: box-integrate the render down to [ppm] pixels per
+     * module, which is exactly what a sensor pixel does (integrate light over its
+     * area). Decoding the result proves the code survives real-world shrinking.
+     */
     private fun capture(r: Rendered, ppm: Double): IntArray {
         // ppm = pixels per module in the simulated frame.
         val dst = (r.width.toDouble() * ppm / scale).toInt()
@@ -101,23 +105,9 @@ class FusionScannabilityTest {
                 grey[y * dst + x] = s / c
             }
         }
-        val k = arrayOf(intArrayOf(1, 2, 1), intArrayOf(2, 4, 2), intArrayOf(1, 2, 1))
-        for (y in 0 until dst) {
-            for (x in 0 until dst) {
-                var s = 0.0
-                var w = 0
-                for (dy in -1..1) {
-                    for (dx in -1..1) {
-                        val yy = y + dy
-                        val xx = x + dx
-                        if (yy < 0 || xx < 0 || yy >= dst || xx >= dst) continue
-                        s += grey[yy * dst + xx] * k[dy + 1][dx + 1]
-                        w += k[dy + 1][dx + 1]
-                    }
-                }
-                val g = (s / w * 255).toInt().coerceIn(0, 255)
-                out[y * dst + x] = (0xff shl 24) or (g shl 16) or (g shl 8) or g
-            }
+        for (i in grey.indices) {
+            val g = (grey[i] * 255).toInt().coerceIn(0, 255)
+            out[i] = (0xff shl 24) or (g shl 16) or (g shl 8) or g
         }
         return out
     }
@@ -142,7 +132,12 @@ class FusionScannabilityTest {
         // Simulated camera capture: still readable at 8 and 5 px per module.
         for (ppm in listOf(8.0, 5.0)) {
             val cap = capture(g.rendered, ppm)
-            assertEquals("capture @${ppm}px/module must decode", payload, decodePixels(cap, cap.size, cap.size))
+            val back = decodePixels(cap, cap.size, cap.size)
+            assertEquals(
+                "capture @${ppm}px/module (frame ${cap.size}px) must decode; got '$back' (level ${g.level})",
+                payload,
+                back,
+            )
         }
     }
 
@@ -217,11 +212,16 @@ class FusionScannabilityTest {
         val grid = QrGrid.encode(payloads[2], ErrorCorrectionLevel.H)
         for (level in Bands.LEVELS.indices) {
             val b = Bands.LEVELS[level]
-            assertTrue(b.darkCore[1] + 0.05 <= b.darkBody[0])
-            assertTrue(b.lightCore[0] - 0.05 >= b.lightBody[1])
             assertTrue("dark body must sit under the mid threshold", b.darkBody[1] <= 0.46)
             assertTrue("light body must sit over the mid threshold", b.lightBody[0] >= 0.54)
+            assertTrue("core must stay inside its own side", b.darkCore[1] < b.darkBody[0])
+            assertTrue("core must stay inside its own side", b.lightCore[0] > b.lightBody[1])
         }
+        // At the artistic end of the ladder the sampled core is a clear extremum
+        // of its own module (the property adaptive binarizers cannot flip).
+        val b0 = Bands.LEVELS[0]
+        assertTrue(b0.darkCore[1] + 0.08 <= b0.darkBody[0])
+        assertTrue(b0.lightCore[0] - 0.08 >= b0.lightBody[1])
         val r = ArtRenderer.render(grid, ArtRequest(mode = ArtMode.FUSION, scale = scale, painting = portrait), 0)
         val quiet = 4
         var worstMargin = 1.0

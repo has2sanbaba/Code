@@ -220,8 +220,9 @@ object ArtRenderer {
                     if (fn) {
                         darkC.toLuminance(FN_DARK)
                     } else {
-                        val hue = req.painting?.sample((mx + 0.5) / n, (my + 0.5) / n)
-                        val t = hue?.let { req.painting!!.stretch(it.luma()) } ?: 0.3
+                        val src = req.painting
+                        val hue = src?.sample((mx + 0.5) / n, (my + 0.5) / n)
+                        val t = if (src != null && hue != null) src.stretch(hue.luma()) else 0.3
                         hue?.toLuminance(band.darkBody[0] + (band.darkBody[1] - band.darkBody[0]) * t * 0.5) ?: darkC
                     }
                 val argb = colour.argb()
