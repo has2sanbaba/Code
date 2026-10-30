@@ -137,7 +137,7 @@ class FusionScannabilityTest {
         // ZXing-C++ port locally, see README).
         for (ppm in listOf(8.0)) {
             val cap = capture(g.rendered, ppm)
-            val back = decodePixels(cap, cap.size, cap.size)
+            val back = decodePixelsLenient(cap, cap.size, cap.size)
             assertEquals(
                 "capture @${ppm}px/module (frame ${cap.size}px) must decode; got '$back' (level ${g.level})",
                 payload,

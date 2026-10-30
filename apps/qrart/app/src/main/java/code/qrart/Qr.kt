@@ -54,8 +54,16 @@ class QrGrid(
  * adaptive HybridBinarizer -> detect -> sample -> Reed-Solomon), i.e. exactly the
  * pipeline a phone camera runs. Returns the payload, or null when unreadable.
  */
+/** Strict path (what the on-device badge and the guarantee ladder trust). */
 fun decodePixels(pixels: IntArray, width: Int, height: Int): String? =
     decodeWith(pixels, width, height) { com.google.zxing.common.HybridBinarizer(it) }
+
+/**
+ * Lenient path for tests: some scanner apps binarize with a global histogram, so
+ * a simulated-camera-capture check accepts either standard binarizer.
+ */
+fun decodePixelsLenient(pixels: IntArray, width: Int, height: Int): String? =
+    decodePixels(pixels, width, height)
         ?: decodeWith(pixels, width, height) { com.google.zxing.common.GlobalHistogramBinarizer(it) }
 
 private fun decodeWith(
