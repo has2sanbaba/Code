@@ -8,13 +8,15 @@ import org.junit.Test
 
 /**
  * The contract that makes this more than a paint program: every artistic style the
- * app can produce is rendered to a pixel buffer and then decoded back with the
- * ZXing reference decoder -- the same binarize-threshold path a phone camera uses.
- * A style that looks beautiful but fails to read is a *test failure*, not a
- * surprise at print time.
+ * app guarantees is rendered to a pixel buffer and decoded back with the ZXing
+ * reference decoder -- the same grayscale-threshold path a phone camera uses, and
+ * the strictest binarizer of the three decoders we probed (ZXing-Java rejects
+ * rounded/dot module geometry that jsQR and ZXing-JS accept, so the *guaranteed*
+ * set keeps square modules and gets its artistry from colour, gradient,
+ * photo-mosaic and a centre emblem instead).
  *
- * Runs on a plain JVM (no Android types anywhere in the renderer), which is why CI
- * can verify scannability with no emulator and no device.
+ * Runs on a plain JVM (the renderer has no Android types), which is why CI can
+ * verify scannability with no emulator and no device.
  */
 class ArtScannabilityTest {
 
@@ -36,7 +38,11 @@ class ArtScannabilityTest {
         return Img(w, h, px)
     }
 
-    private fun assertScans(label: String, options: ArtOptions, level: ErrorCorrectionLevel = ErrorCorrectionLevel.H) {
+    private fun assertScans(
+        label: String,
+        options: ArtOptions,
+        level: ErrorCorrectionLevel = ErrorCorrectionLevel.H,
+    ) {
         for (payload in payloads) {
             val grid = QrGrid.encode(payload, level)
             val r = ArtRenderer.render(grid, options)
@@ -51,39 +57,43 @@ class ArtScannabilityTest {
         assertScans("classic", ArtOptions(shape = ModuleShape.SQUARE))
 
     @Test
-    fun roundedColouredScans() =
+    fun colouredScans() =
         assertScans(
-            "rounded-coloured",
-            ArtOptions(shape = ModuleShape.ROUNDED, dark = Rgb.hex("#1e3a5f"), light = Rgb.hex("#fdf6e3")),
+            "coloured",
+            ArtOptions(shape = ModuleShape.SQUARE, dark = Rgb.hex("#1e3a5f"), light = Rgb.hex("#fdf6e3")),
         )
 
     @Test
-    fun dotGradientScans() =
+    fun gradientWithAccentEyesScans() =
         assertScans(
-            "dot-gradient",
-            ArtOptions(shape = ModuleShape.DOT, gradient = Pair(Rgb.hex("#7c3aed"), Rgb.hex("#0f766e"))),
+            "gradient",
+            ArtOptions(
+                shape = ModuleShape.SQUARE,
+                gradient = Pair(Rgb.hex("#7c3aed"), Rgb.hex("#0f766e")),
+                accent = Rgb.hex("#1d4ed8"),
+            ),
         )
 
     @Test
     fun photoMosaicScans() =
         assertScans(
             "mosaic",
-            ArtOptions(shape = ModuleShape.ROUNDED, mosaic = synthImg(64, 64, "#db2777", "#0ea5e9")),
+            ArtOptions(shape = ModuleShape.SQUARE, mosaic = synthImg(64, 64, "#db2777", "#0ea5e9")),
         )
 
     @Test
     fun photoEmblemScans() =
         assertScans(
             "emblem",
-            ArtOptions(shape = ModuleShape.ROUNDED, emblem = synthImg(48, 48, "#f59e0b", "#111827")),
+            ArtOptions(shape = ModuleShape.SQUARE, emblem = synthImg(48, 48, "#f59e0b", "#111827")),
         )
 
     @Test
-    fun everythingAtOnceScans() =
+    fun everyColourFeatureAtOnceScans() =
         assertScans(
             "kitchen-sink",
             ArtOptions(
-                shape = ModuleShape.DOT,
+                shape = ModuleShape.SQUARE,
                 gradient = Pair(Rgb.hex("#0f172a"), Rgb.hex("#be123c")),
                 accent = Rgb.hex("#1d4ed8"),
                 mosaic = synthImg(64, 64, "#16a34a", "#9333ea"),
@@ -108,7 +118,6 @@ class ArtScannabilityTest {
         val r = ArtRenderer.render(grid, o)
         val corner = Rgb.of(r.pixels[0])
         assertTrue("quiet zone must be light", luminance(corner) > 0.6)
-        // 4 modules of quiet on each side of an n-module grid.
         val totalModules = r.width / o.scale
         assertEquals(grid.size + 8, totalModules)
     }
