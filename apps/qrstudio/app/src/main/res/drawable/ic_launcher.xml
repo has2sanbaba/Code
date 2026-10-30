@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Launcher mark: a stylised artistic QR -- rounded modules in brand navy on a
-  cream plate with the three finder eyes, echoing what the app produces.
+  Launcher mark: a stylised artistic QR with rounded modules in brand navy on a
+  cream plate plus the three finder eyes, echoing what the app produces.
   A vector keeps the APK free of generated PNG mipmap buckets.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
