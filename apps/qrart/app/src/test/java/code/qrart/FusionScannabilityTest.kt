@@ -83,7 +83,9 @@ class FusionScannabilityTest {
      * module, which is exactly what a sensor pixel does (integrate light over its
      * area). Decoding the result proves the code survives real-world shrinking.
      */
-    private fun capture(r: Rendered, ppm: Double): IntArray {
+    private class Capture(val pixels: IntArray, val side: Int)
+
+    private fun capture(r: Rendered, ppm: Double): Capture {
         // ppm = pixels per module in the simulated frame.
         val dst = (r.width.toDouble() * ppm / scale).toInt()
         val out = IntArray(dst * dst)
@@ -109,7 +111,7 @@ class FusionScannabilityTest {
             val g = (grey[i] * 255).toInt().coerceIn(0, 255)
             out[i] = (0xff shl 24) or (g shl 16) or (g shl 8) or g
         }
-        return out
+        return Capture(out, dst)
     }
 
     /* ------------------------------------------------------------- checks */
@@ -136,11 +138,11 @@ class FusionScannabilityTest {
         // reference decoder -- a code photographed small or from afar. (The
         // ZXing-C++ port additionally decodes these renders down to 5 px/module;
         // see README.)
-        for (ppm in listOf(10.0)) {
+        for (ppm in listOf(8.0, 5.0)) {
             val cap = capture(g.rendered, ppm)
-            val back = decodePixelsLenient(cap, cap.size, cap.size)
+            val back = decodePixelsLenient(cap.pixels, cap.side, cap.side)
             assertEquals(
-                "capture @${ppm}px/module (frame ${cap.size}px) must decode; got '$back' (level ${g.level})",
+                "capture @${ppm}px/module (frame ${cap.side}px) must decode; got '$back' (level ${g.level})",
                 payload,
                 back,
             )
