@@ -55,9 +55,18 @@ class QrGrid(
  * pipeline a phone camera runs. Returns the payload, or null when unreadable.
  */
 fun decodePixels(pixels: IntArray, width: Int, height: Int): String? =
+    decodeWith(pixels, width, height) { com.google.zxing.common.HybridBinarizer(it) }
+        ?: decodeWith(pixels, width, height) { com.google.zxing.common.GlobalHistogramBinarizer(it) }
+
+private fun decodeWith(
+    pixels: IntArray,
+    width: Int,
+    height: Int,
+    binarizer: (RGBLuminanceSource) -> com.google.zxing.Binarizer,
+): String? =
     try {
         val source = RGBLuminanceSource(width, height, pixels)
-        val bitmap = BinaryBitmap(HybridBinarizer(source))
+        val bitmap = BinaryBitmap(binarizer(source))
         val hints = mapOf<DecodeHintType, Any>(DecodeHintType.TRY_HARDER to true)
         QRCodeReader().decode(bitmap, hints).text
     } catch (e: Exception) {
