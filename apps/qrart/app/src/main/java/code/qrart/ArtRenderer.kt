@@ -108,10 +108,12 @@ object ArtRenderer {
                             out[row + lx] = fnArgb
                             continue
                         }
-                        // Centre weight: 1 inside the sampled core (middle third of
-                        // the cell), easing to 0 at the cell edge.
+                        // Centre weight: 1 across the sampled core (the central ~40%
+                        // of the cell), easing to 0 near the cell edge. A wide core
+                        // keeps the sampled pixel extreme even after a camera
+                        // downsamples the symbol to a few pixels per module.
                         val d = max(abs(lx + 0.5 - half), abs(ly + 0.5 - half)) / half
-                        val w = smooth(((0.62 - d) / 0.62).coerceIn(0.0, 1.0))
+                        val w = smooth(((0.80 - d) / 0.38).coerceIn(0.0, 1.0))
                         val c = painting.sample((mx + (lx + 0.5) / scale) / n, (my + (ly + 0.5) / scale) / n)
                         val t = painting.stretch(c.luma())
                         val core = if (dark) bands.darkCore else bands.lightCore

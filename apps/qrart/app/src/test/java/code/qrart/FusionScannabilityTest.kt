@@ -239,7 +239,7 @@ class FusionScannabilityTest {
                 for (ly in 0 until scale) {
                     for (lx in 0 until scale) {
                         val d = maxOf(kotlin.math.abs(lx + 0.5 - scale / 2.0), kotlin.math.abs(ly + 0.5 - scale / 2.0)) / (scale / 2.0)
-                        if (d < 0.5) continue
+                        if (d < 0.85) continue // outer ring: pure body tones
                         val y = luma(r.pixels[(oy + ly) * r.width + ox + lx])
                         bodyMin = minOf(bodyMin, y)
                         bodyMax = maxOf(bodyMax, y)
