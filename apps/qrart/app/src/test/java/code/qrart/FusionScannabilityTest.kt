@@ -127,7 +127,10 @@ class FusionScannabilityTest {
         val g = Scannability.renderGuaranteed(grid, payload, req)
         assertTrue("fusion must decode (payload='$payload', emblem=$withEmblem, level=${g.level})", g.ok)
         assertEquals(payload, g.decoded)
-        assertTrue("guarantee should not need the structural fallback", g.level <= Bands.LEVELS.size)
+        assertTrue(
+            "artistic request should be honoured near the top of the ladder (level=${g.level})",
+            g.level <= 1,
+        )
 
         // Simulated camera capture: still readable at 8 and 5 px per module.
         for (ppm in listOf(8.0, 5.0)) {

@@ -263,6 +263,10 @@ object ArtRenderer {
         val avail = n - 18 // inside the format rings
         var side = (sqrt(req.emblemFraction * kept) * n).toInt().coerceAtLeast(3)
         if (side + 2 > avail) side = avail - 2
+        // Small symbols have a small Reed-Solomon budget: the logo plus its light
+        // pad must stay within what the ECC can rebuild, so cap the box by size.
+        val cap = (n - 18) / 2
+        if (side > cap) side = cap
         if (side < 3) return
         val start = (n - side) / 2
         val pad = 1
