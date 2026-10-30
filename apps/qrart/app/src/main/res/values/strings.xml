@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">کیوآر آرت</string>
+    <string name="app_title">کیوآر آرت</string>
+    <string name="app_subtitle">نقاشی و عکس شما داخل کیوآر کد؛ با راستی‌آزمایی اسکن روی همین دستگاه.</string>
+    <string name="default_payload">https://</string>
+    <string name="hint_payload">متن یا لینک (نشانی وب، وای‌فای، تلفن…)</string>
+    <string name="label_ecc">سطح تصحیح خطا (با نشان مرکزی: H)</string>
+    <string name="ecc_l">L</string>
+    <string name="ecc_m">M</string>
+    <string name="ecc_q">Q</string>
+    <string name="ecc_h">H</string>
+    <string name="label_mode">سبک هنری</string>
+    <string name="mode_fusion">تلفیق</string>
+    <string name="mode_poster">پوستر</string>
+    <string name="mode_classic">کلاسیک</string>
+    <string name="pick_photo">انتخاب عکس / نقاشی</string>
+    <string name="photo_none">هنوز عکسی انتخاب نشده است.</string>
+    <string name="photo_loaded">عکس آمادهٔ تلفیق است (%1$d×%2$d پیکسل).</string>
+    <string name="emblem_label">نشان مرکزی (لوگو) از همان عکس</string>
+    <string name="label_art">میزان هنری بودن: ۰ بیشترین جزئیات عکس، ۳ بیشترین اطمینان اسکن</string>
+    <string name="generate">ساخت و راستی‌آزمایی</string>
+    <string name="busy">در حال ساخت و دیکد آزمایشی با ZXing…</string>
+    <string name="preview_desc">پیش‌نمایش کیوآر هنری</string>
+    <string name="status_ok">✓ قابل اسکن: دیکد شد با ZXing در %1$d میلی‌ثانیه (سطح ایمنی %2$d)</string>
+    <string name="status_fail">✗ دیکد نشد؛ میزان هنری بودن را کمتر کنید.</string>
+    <string name="save">ذخیره در گالری</string>
+    <string name="share">اشتراک</string>
+    <string name="share_title">اشتراک کیوآر هنری</string>
+    <string name="saved">در گالری ذخیره شد.</string>
+    <string name="save_failed">ذخیره ممکن نشد.</string>
+    <string name="err_empty">ابتدا متن یا لینک را وارد کنید.</string>
+    <string name="err_photo">برای این سبک، ابتدا یک عکس یا نقاشی انتخاب کنید.</string>
+</resources>

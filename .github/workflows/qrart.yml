@@ -1,0 +1,102 @@
+name: QRArt Android
+
+on:
+  push:
+    branches: [main, "arena/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  apk:
+    name: ZXing scannability tests -> APK -> Releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.7.1"
+
+      # The scannability suite is the product's spine: every artistic style is
+      # rendered to a pixel buffer and decoded back with the ZXing reference
+      # decoder on a plain JVM -- no emulator, no device. A pretty-but-unreadable
+      # render is a test failure, not a print-time surprise.
+      - name: Unit tests (ZXing scannability) + assembleDebug
+        working-directory: apps/qrart
+        run: |
+          gradle --no-daemon --console=plain testDebugUnitTest assembleDebug 2>&1 | tee /tmp/gradle.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Report failure on the PR
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## QRArt build failed"
+            echo '```'
+            tail -60 /tmp/gradle.log
+            echo '```'
+          } > /tmp/report.md
+          PR="${{ github.event.pull_request.number }}"
+          if [ -z "$PR" ]; then
+            PR=$(gh pr list --head-ref "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          fi
+          if [ -n "$PR" ]; then
+            gh pr comment "$PR" --body-file /tmp/report.md
+          else
+            cat /tmp/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: qrart-debug-apk
+          path: apps/qrart/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      # Every build on main lands in GitHub Releases under its own tags so it
+      # never collides with the earlier app's releases.
+      - name: Publish APK to GitHub Releases
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK=apps/qrart/app/build/outputs/apk/debug/app-debug.apk
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)"/\1/p' apps/qrart/app/build.gradle.kts | head -1)
+          cp "$APK" "QRArt-${VERSION}.apk"
+          cp "$APK" "QRArt-latest.apk"
+          SIZE=$(stat -c%s "$APK")
+          {
+            echo "QRArt ${VERSION} — نقاشی/عکس داخل کیوآر کد، با تضمین اسکن."
+            echo "QRArt ${VERSION} — paintings and photos fused into QR codes that provably scan."
+            echo ""
+            echo "Built from commit ${GITHUB_SHA::7} by GitHub Actions. One universal debug-signed APK;"
+            echo "pure Kotlin/Java (no native libraries), Android 5.0 (API 21) and newer. Size: ${SIZE} bytes."
+            echo "Every render is verified scannable by the ZXing reference decoder in CI and on-device."
+            echo ""
+            echo "Install: download the APK, allow \"install unknown apps\", open it."
+          } > notes.md
+          gh release create "qrart-v${VERSION}" "QRArt-${VERSION}.apk" \
+            --title "QRArt ${VERSION} — Android" --notes-file notes.md 2>/dev/null || \
+            gh release upload "qrart-v${VERSION}" "QRArt-${VERSION}.apk" --clobber
+          gh release create "qrart-latest" "QRArt-latest.apk" \
+            --title "QRArt — latest Android build" --notes-file notes.md 2>/dev/null || \
+            gh release upload "qrart-latest" "QRArt-latest.apk" --clobber
+          echo "published qrart-v${VERSION} and qrart-latest"
