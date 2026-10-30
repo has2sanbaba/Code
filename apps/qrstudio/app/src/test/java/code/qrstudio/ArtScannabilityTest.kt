@@ -1,6 +1,6 @@
 package code.qrstudio
 
-import com.google.zxing.qrcode.ErrorCorrectionLevel
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
