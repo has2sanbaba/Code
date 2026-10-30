@@ -142,7 +142,7 @@ class MainActivity : AppCompatActivity() {
         val palette = palettes.getOrElse(paletteIndex) { palettes[0] }
         val options =
             ArtOptions(
-                scale = 10,
+                scale = 12,
                 quiet = 4,
                 shape = shapes.getOrElse(shapeIndex) { ModuleShape.ROUNDED },
                 dark = palette.dark,
