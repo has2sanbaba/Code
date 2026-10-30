@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">QRArt</string>
+    <string name="app_title">QRArt</string>
+    <string name="app_subtitle">Your painting or photo, fused into a QR code; scan-verified on this device.</string>
+    <string name="default_payload">https://</string>
+    <string name="hint_payload">Text or link (URL, Wi-Fi, phone…)</string>
+    <string name="label_ecc">Error correction (use H with a centre logo)</string>
+    <string name="ecc_l">L</string>
+    <string name="ecc_m">M</string>
+    <string name="ecc_q">Q</string>
+    <string name="ecc_h">H</string>
+    <string name="label_mode">Art style</string>
+    <string name="mode_fusion">Fusion</string>
+    <string name="mode_poster">Poster</string>
+    <string name="mode_classic">Classic</string>
+    <string name="pick_photo">Pick photo / painting</string>
+    <string name="photo_none">No photo picked yet.</string>
+    <string name="photo_loaded">Photo ready to fuse (%1$d×%2$d px).</string>
+    <string name="emblem_label">Centre emblem (logo) from the same photo</string>
+    <string name="label_art">Art amount: 0 keeps most photo detail, 3 maximises scan safety</string>
+    <string name="generate">Make &amp; verify</string>
+    <string name="busy">Rendering and test-decoding with ZXing…</string>
+    <string name="preview_desc">Artistic QR preview</string>
+    <string name="status_ok">✓ Scannable: ZXing decoded it in %1$d ms (safety level %2$d)</string>
+    <string name="status_fail">✗ Did not decode; lower the art amount.</string>
+    <string name="save">Save to gallery</string>
+    <string name="share">Share</string>
+    <string name="share_title">Share artistic QR</string>
+    <string name="saved">Saved to gallery.</string>
+    <string name="save_failed">Could not save.</string>
+    <string name="err_empty">Enter some text or a link first.</string>
+    <string name="err_photo">This style needs a photo or painting first.</string>
+</resources>
