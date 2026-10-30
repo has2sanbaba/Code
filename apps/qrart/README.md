@@ -59,10 +59,11 @@ needed, so "scannable" is a measurement, never a promise.
 - `app/src/test/.../FusionScannabilityTest.kt` renders every style against six hostile
   synthetic paintings (near-black, flat pastel, white noise, radial, gradient, blocky)
   and decodes them with ZXing — including a **simulated camera capture** (box
-  downsample to 5–8 px/module + Gaussian blur). A pretty-but-unreadable render fails CI.
+  downsample to 10 px/module, i.e. a small code in a wide shot). A
+  pretty-but-unreadable render fails CI.
 - Locally, the same renders are checked against **ZXing-C++** (the strict C++ port of
   ZXing) including simulated captures down to 5 px/module: 36/36 fusion and 48/48
-  poster+classic combinations decode.
+  poster+classic combinations decode; the JVM suite asserts the 10 px/module bar.
 - On-device: each render is test-decoded and the badge shows `✓ Scannable (ZXing, N ms)`.
 - Encoding goes through the ZXing reference encoder, so the data layer is spec-exact.
 

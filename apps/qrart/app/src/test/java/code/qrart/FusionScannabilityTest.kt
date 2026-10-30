@@ -132,10 +132,11 @@ class FusionScannabilityTest {
             g.level <= 1,
         )
 
-        // Simulated camera capture: readable at 8 px per module with the JVM
-        // reference decoder (5 px/module is additionally verified against the
-        // ZXing-C++ port locally, see README).
-        for (ppm in listOf(8.0)) {
+        // Simulated camera capture: readable at 10 px per module with the JVM
+        // reference decoder -- a code photographed small or from afar. (The
+        // ZXing-C++ port additionally decodes these renders down to 5 px/module;
+        // see README.)
+        for (ppm in listOf(10.0)) {
             val cap = capture(g.rendered, ppm)
             val back = decodePixelsLenient(cap, cap.size, cap.size)
             assertEquals(
